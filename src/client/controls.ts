@@ -65,27 +65,35 @@ export function createControls(
 
   // mira: na vista de cima, aponta para onde o dedo está; na vista de mira, arrastar para os lados gira
   let dragX: number | null = null;
+  let dragCue = false;
   canvas.addEventListener('pointerdown', (e) => {
     if (!opts) return;
     canvas.setPointerCapture(e.pointerId);
     dragX = e.clientX;
+    // com bola na mão, agarrar a branca (ou perto dela) já arrasta, sem o botão Mover branca
+    const p = scene.pickTable(e.clientX, e.clientY);
+    const c = cuePos();
+    dragCue = !!opts.ballInHand && !!p && !!c && (p.x - c.x) ** 2 + (p.y - c.y) ** 2 < 0.0049;
     pointerAt(e);
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!opts || dragX === null) return;
-    if (camMode === 'aim' && !placing) {
+    if (camMode === 'aim' && !placing && !dragCue) {
       angle += (e.clientX - dragX) * 0.003;
       dragX = e.clientX;
       scene.setCamera('aim', angle);
       sendAim();
     } else pointerAt(e);
   });
-  canvas.addEventListener('pointerup', () => (dragX = null));
+  canvas.addEventListener('pointerup', () => {
+    dragX = null;
+    dragCue = false;
+  });
 
   function pointerAt(e: PointerEvent) {
     const p = scene.pickTable(e.clientX, e.clientY);
     if (!p || !opts) return;
-    if (placing) {
+    if (placing || dragCue) {
       placed = p;
       cb.onMoveCue(p, opts.cueValid(p));
       showCue();
@@ -145,6 +153,16 @@ export function createControls(
     dx /= n;
     dy /= n;
     cb.onShoot({ dx, dy, power, spinX, spinY }, cue);
+  });
+
+  // setas giram a mira de pouquinho (Shift: mais rápido) — mira fina no desktop
+  window.addEventListener('keydown', (e) => {
+    if (!opts || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || (e.target as HTMLElement | null)?.closest('input, textarea')) return;
+    e.preventDefault();
+    const step = (e.shiftKey ? 0.02 : 0.002) * (e.key === 'ArrowRight' ? 1 : -1);
+    angle += step;
+    if (camMode === 'aim') scene.setCamera('aim', angle);
+    sendAim();
   });
 
   // barra de espaço taca, como o botão (pedido do Fernando, 17/10/2026); não vale digitando num campo

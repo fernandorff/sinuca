@@ -3,6 +3,7 @@ import { MODES, winnersOf, type GameState, type Mode } from '../shared/rules/ind
 import { ballOn } from '../shared/rules/sinuca.ts';
 import { target, valueOf } from '../shared/rules/snooker.ts';
 import type { PublicRoom } from '../shared/room.ts';
+import { ballLook } from './look.ts';
 
 type Child = Node | string | null | undefined | false;
 export function el(tag: string, props: Record<string, any> = {}, ...children: Child[]): HTMLElement {
@@ -126,7 +127,8 @@ export function renderHud(
   online: boolean,
   status: string,
   muted: boolean,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; copy(): void; lobby(): void; mute(): void },
+  animating: boolean,
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; copy(): void; lobby(): void; mute(): void; skip(): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
@@ -145,7 +147,7 @@ export function renderHud(
       { class: `seat${team}${turn ? ' turn' : ''}${i === you.seat ? ' me' : ''}` },
       el('span', { class: `dot ${s.connected ? 'on' : 'off'}`, title: s.connected ? 'conectado' : 'desconectado' }),
       el('b', {}, s.name),
-      group && el('small', {}, GROUP[group]),
+      group && el('small', {}, `${GROUP[group]} · faltam ${left(g!, group)}`),
       score !== null && el('span', { class: 'score' }, String(score)),
     );
   });
@@ -166,6 +168,8 @@ export function renderHud(
     ),
     el('div', { class: 'mode-name' }, MODES[room.mode].label),
     el('ul', { class: 'seats' }, ...seats),
+    g && tray(room.mode, g),
+    animating && el('button', { type: 'button', class: 'skip', onclick: act.skip }, 'Pular ⏭'),
     el('div', { class: 'status' }, status),
     rule && el('div', { class: 'status rule' }, rule),
     room.mode === 'free' && room.phase === 'aiming' && you.seat !== null && el('button', { type: 'button', class: 'rerack', onclick: act.rerack }, 'Arrumar mesa'),
@@ -182,4 +186,24 @@ export function renderHud(
       el('div', { class: 'center-actions' }, el('h2', {}, winnerNames ? `${winnerNames} ${(winners?.length ?? 0) > 1 ? 'venceram' : 'venceu'}!` : 'Fim de jogo'), you.seat !== null && el('button', { type: 'button', class: 'primary', onclick: act.rematch }, 'Revanche')),
     you.seat === null && !waiting && el('div', { class: 'badge' }, 'assistindo'),
   ].filter((c): c is HTMLElement => !!c));
+}
+
+// quantas bolas do grupo ainda estão na mesa (bola 8)
+function left(g: GameState, group: 'solids' | 'stripes'): number {
+  return g.balls.filter((b) => !b.pocketed && (group === 'solids' ? b.id >= 1 && b.id <= 7 : b.id >= 9)).length;
+}
+
+// bandeja: as bolas que já caíram, na ordem do número
+function tray(mode: Mode, g: GameState): HTMLElement | null {
+  const down = g.balls.filter((b) => b.pocketed && b.id !== 0).sort((a, b) => a.id - b.id);
+  if (!down.length) return null;
+  return el(
+    'div',
+    { class: 'tray', 'aria-label': 'Bolas encaçapadas' },
+    ...down.map((b) => {
+      const { color, stripe, label } = ballLook(mode, b.id);
+      const style = stripe ? `background: linear-gradient(#f4f1e8 0 28%, ${color} 28% 72%, #f4f1e8 72%)` : `background: ${color}`;
+      return el('span', { class: 'mini', style, title: label || 'bola' }, label);
+    }),
+  );
 }

@@ -2,24 +2,15 @@
 import * as THREE from 'three';
 import { MODES, type Mode } from '../shared/rules/index.ts';
 import { predictAim } from '../shared/aim.ts';
-import { BAULK_X, D_R, SNOOKER_COLOR_BASE, type BallPos } from '../shared/table.ts';
+import { BAULK_X, D_R, type BallPos } from '../shared/table.ts';
+import { ballLook } from './look.ts';
 
-const POOL_COLORS = ['#f4f1e8', '#f2c230', '#1d4fb8', '#c8282b', '#5a2a86', '#e3711c', '#1c7a43', '#7a1f22', '#111111'];
-// cores da sinuca pelo valor: 1 vermelha, 2 amarela, 3 verde, 4 marrom, 5 azul, 6 rosa, 7 preta
-const SNOOKER_COLORS = ['#f4f1e8', '#c41e24', '#f2c230', '#1c7a43', '#6b3e1e', '#1d4fb8', '#f19bb5', '#111111'];
 const FELT = '#1f6b4a';
 const CUSHION = '#1a5c40';
 const WOOD = '#5b3419';
 const RAIL_H = 0.042;
 const CUSHION_W = 0.045;
 const FRAME_W = 0.13;
-
-// pool: lisas, listradas e número; sinuca e snooker: bolas lisas, sem número
-function ballLook(mode: Mode, id: number): { color: string; stripe: boolean; label: string } {
-  if (mode === 'sinuca') return { color: SNOOKER_COLORS[id], stripe: false, label: '' };
-  if (mode === 'snooker') return { color: SNOOKER_COLORS[id === 0 ? 0 : id <= 15 ? 1 : id - SNOOKER_COLOR_BASE], stripe: false, label: '' };
-  return { color: POOL_COLORS[id <= 8 ? id : id - 8], stripe: id >= 9, label: id > 0 ? String(id) : '' };
-}
 
 function ballTexture(mode: Mode, id: number): THREE.Texture {
   const c = document.createElement('canvas');

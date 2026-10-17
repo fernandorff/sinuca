@@ -84,6 +84,7 @@ function startRoom(id: string, name: string) {
   let you: { playerId: string; seat: number | null } = { playerId, seat: null };
   let online = false;
   let animating = false;
+  let skip = false;
   let queued: PublicRoom | null = null;
   let shown: BallPos[] = [];
   let status = 'Conectando…';
@@ -111,6 +112,14 @@ function startRoom(id: string, name: string) {
     return (view = { scene, controls });
   }
 
+  // Espaço durante a tacada pula a animação (na sua vez, Espaço taca: isso fica nos controles)
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && animating) {
+      e.preventDefault();
+      skip = true;
+    }
+  });
+
   const net = connect('/ws/room/' + id, onMsg, () => net.send({ t: 'hello', playerId, name }), (on) => {
     online = on;
     draw();
@@ -121,6 +130,7 @@ function startRoom(id: string, name: string) {
     start: () => net.send({ t: 'start' }),
     rematch: () => net.send({ t: 'rematch' }),
     rerack: () => net.send({ t: 'rerack' }),
+    skip: () => (skip = true),
     lobby: () => (location.hash = ''),
     mute() {
       muted = !muted;
@@ -139,7 +149,7 @@ function startRoom(id: string, name: string) {
   };
 
   function draw() {
-    if (room) renderHud(hud, room, you, online, status, muted, act);
+    if (room) renderHud(hud, room, you, online, status, muted, animating, act);
   }
 
   function show(balls: BallPos[]) {
@@ -195,6 +205,7 @@ function startRoom(id: string, name: string) {
     if (!room) return;
     const { scene, controls } = viewFor(room.mode);
     animating = true;
+    skip = false;
     controls.enable(null);
     scene.setHighlight([]);
     status = `${room.seats[m.by]?.name ?? 'Alguém'} tacou.`;
@@ -206,8 +217,9 @@ function startRoom(id: string, name: string) {
     let nextEvent = 0;
     const t0 = performance.now();
     const frame = (t: number) => {
-      const i = Math.min(sim.frames.length - 1, Math.max(0, Math.floor(((t - t0) / 1000) * 60)));
+      const i = skip ? sim.frames.length - 1 : Math.min(sim.frames.length - 1, Math.max(0, Math.floor(((t - t0) / 1000) * 60)));
       show(sim.frames[i]);
+      if (skip) nextEvent = sim.events.length;
       // cada quadro cobre 4 passos da física: toca os sons dos eventos que já aconteceram
       for (; nextEvent < sim.events.length && sim.events[nextEvent].step <= i * 4; nextEvent++) {
         const e = sim.events[nextEvent];
