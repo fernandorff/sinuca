@@ -4,6 +4,7 @@ import { ballOn } from '../shared/rules/sinuca.ts';
 import { target, valueOf } from '../shared/rules/snooker.ts';
 import type { PublicRoom } from '../shared/room.ts';
 import { ballLook } from './look.ts';
+import { CONTROLS, RULES } from './rules-text.ts';
 
 type Child = Node | string | null | undefined | false;
 export function el(tag: string, props: Record<string, any> = {}, ...children: Child[]): HTMLElement {
@@ -69,9 +70,26 @@ export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] |
     el(
       'div',
       { class: 'lobby' },
-      el('header', {}, el('h1', {}, 'Sinuca'), el('button', { type: 'button', class: 'link', onclick: onRename }, `${name} · trocar`)),
+      el(
+        'header',
+        { class: 'hero' },
+        el('div', {}, el('h1', {}, 'Sinuca'), el('p', { class: 'muted' }, 'Mesa de bar com os amigos. Sem cadastro: crie a mesa e mande o link.')),
+        el('button', { type: 'button', class: 'link', onclick: onRename }, `${name} · trocar`),
+      ),
       el('section', {}, el('h2', {}, 'Criar mesa'), el('div', { class: 'modes' }, ...(Object.keys(MODES) as Mode[]).map((m) =>
-        el('button', { type: 'button', class: 'primary', onclick: () => onCreate(m) }, MODES[m].label, el('small', {}, seatsText(m))),
+        el(
+          'div',
+          { class: `mode-card mode-${m}` },
+          el('b', {}, MODES[m].label),
+          el('span', { class: 'muted' }, RULES[m].tagline),
+          el('small', {}, seatsText(m)),
+          el(
+            'div',
+            { class: 'mode-actions' },
+            el('button', { type: 'button', class: 'primary', onclick: () => onCreate(m) }, 'Criar mesa'),
+            el('button', { type: 'button', onclick: () => showRules(m) }, 'Regras'),
+          ),
+        ),
       ))),
       el('section', {}, el('h2', {}, 'Mesas abertas'), list),
     ),
@@ -165,6 +183,7 @@ export function renderHud(
       el('button', { type: 'button', class: 'code', onclick: act.copy, title: 'Copiar link da mesa' }, `${room.id} · copiar link`),
       el('span', { class: `dot ${online ? 'on' : 'off'}`, title: online ? 'conectado' : 'reconectando…' }),
       el('button', { type: 'button', class: 'link', onclick: act.mute, 'aria-pressed': String(!muted) }, muted ? 'Som: desligado' : 'Som: ligado'),
+      el('button', { type: 'button', class: 'link', onclick: () => showRules(room.mode) }, 'Regras'),
     ),
     el('div', { class: 'mode-name' }, MODES[room.mode].label),
     el('ul', { class: 'seats' }, ...seats),
@@ -226,4 +245,33 @@ export function banner(text: string, kind: 'turn' | 'foul' | 'good' = 'turn') {
 function board(room: PublicRoom, scores: number[], winners: number[]): HTMLElement {
   const rows = scores.map((pts, i) => ({ i, pts, name: room.seats[i]?.name ?? '—' })).sort((a, b) => b.pts - a.pts);
   return el('ul', { class: 'board' }, ...rows.map((r) => el('li', { class: winners.includes(r.i) ? 'win' : '' }, el('span', {}, r.name), el('b', {}, String(r.pts)))));
+}
+
+// menu de regras do modo, com os controles no fim
+export function showRules(mode: Mode) {
+  document.querySelector('.rules-overlay')?.remove();
+  const close = () => overlay.remove();
+  const overlay = el(
+    'div',
+    { class: 'overlay rules-overlay', onclick: (e: Event) => e.target === overlay && close() },
+    el(
+      'div',
+      { class: 'panel rules', role: 'dialog', 'aria-label': 'Regras de ' + MODES[mode].label },
+      el('h1', {}, MODES[mode].label),
+      el('p', { class: 'muted' }, RULES[mode].tagline),
+      el('h2', {}, 'Regras'),
+      el('ul', {}, ...RULES[mode].items.map((t) => el('li', {}, t))),
+      el('h2', {}, 'Controles'),
+      el('ul', {}, ...CONTROLS.map((t) => el('li', {}, t))),
+      el('button', { type: 'button', class: 'primary', onclick: close }, 'Entendi'),
+    ),
+  );
+  document.body.append(overlay);
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      close();
+      window.removeEventListener('keydown', onKey);
+    }
+  };
+  window.addEventListener('keydown', onKey);
 }

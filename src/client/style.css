@@ -90,3 +90,20 @@ body.in-room::after { content: ''; position: fixed; inset: 0; pointer-events: no
 .board { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; text-align: left; }
 .board li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, .05); }
 .board li.win { background: rgba(255, 214, 102, .18); font-weight: 700; }
+.hero { align-items: flex-start; padding: 22px; border-radius: 16px; background: radial-gradient(ellipse at 30% 0%, #2f8a5f 0%, #1f6b4a 45%, #173f2d 100%); box-shadow: inset 0 0 0 6px #5b3419, inset 0 0 0 8px #3b2212; }
+.hero h1 { font-size: 2.6rem; letter-spacing: .03em; text-shadow: 0 2px 10px rgba(0, 0, 0, .5); }
+.hero p { margin: 6px 0 0; color: #e7efe9; max-width: 34ch; }
+.modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mode-card { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--felt); min-width: 0; }
+.mode-card b { font-size: 1.1rem; }
+.mode-card .muted { font-size: .9rem; }
+.mode-sinuca, .mode-snooker { border-top-color: #c41e24; }
+.mode-free { border-top-color: var(--chalk); }
+.mode-actions { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+.mode-actions button { flex: 1; justify-content: center; }
+@media (max-width: 520px) { .modes { grid-template-columns: minmax(0, 1fr); } }
+.rules { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; }
+.rules h2 { margin: 8px 0 0; }
+.rules ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
+.rules-overlay { z-index: 20; }
+.panel > button { justify-content: center; }
