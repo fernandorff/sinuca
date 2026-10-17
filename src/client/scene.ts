@@ -47,7 +47,7 @@ function ballTexture(mode: Mode, id: number): THREE.Texture {
 export type GameScene = ReturnType<typeof createScene>;
 
 export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
-  const { L, W, R, pockets, sideMouth } = MODES[mode].table;
+  const { L, W, R, pockets, sideMouth, cornerMouth } = MODES[mode].table;
   const toScene = (x: number, y: number) => new THREE.Vector3(x - L / 2, R, y - W / 2);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   const maxRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -99,15 +99,24 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   const outerL = L + 2 * CUSHION_W + 2 * FRAME_W;
   const outerW = W + 2 * CUSHION_W + 2 * FRAME_W;
   const POCKET_DEPTH = 0.13;
-  // cantos: no centro de captura da física; meio: buraco do tamanho da boca, com a borda 6 mm fora da linha
-  // da tabela (regra da WPA: 0 a 9,5 mm), então ele fica todo dentro da tabela e da madeira
-  const holes = pockets.map((p, i) =>
-    i < 4
-      ? { x: p.x - L / 2, z: p.y - W / 2, r: p.r * 1.1, count: 0 }
-      : { x: 0, z: Math.sign(p.y - W / 2) * (W / 2 + 0.006 + sideMouth), r: sideMouth, count: 0 },
-  );
-  // pontas das tabelas na caçapa do meio: cortadas a 104° (a boca abre 14° para fora a cada lado)
+  // Medidas da WPA para o desenho das caçapas:
+  // - canto: boca de cornerMouth na diagonal entre as pontas das tabelas, que ficam a `cornerA` da quina em cada
+  //   tabela; o buraco começa uma "prateleira" (35% da boca) atrás da linha da boca, cavado na quina;
+  // - meio: buraco do tamanho da boca, com a borda 6 mm fora da linha da tabela (WPA: 0 a 9,5 mm).
+  const cornerA = cornerMouth / Math.SQRT2;
+  const cornerR = cornerMouth * 0.52;
+  const cornerOut = (cornerR - (cornerA / Math.SQRT2 - cornerMouth * 0.35)) / Math.SQRT2;
+  const holes = pockets.map((p, i) => {
+    const sx = Math.sign(p.x - L / 2);
+    const sz = Math.sign(p.y - W / 2);
+    return i < 4
+      ? { x: sx * (L / 2 + cornerOut), z: sz * (W / 2 + cornerOut), r: cornerR, count: 0 }
+      : { x: 0, z: sz * (W / 2 + 0.006 + sideMouth), r: sideMouth, count: 0 };
+  });
+  // pontas das tabelas: no meio, cortadas a 104° (abrem 14° para fora); no canto, a 142° (a ponta corre a 38°
+  // da linha da tabela, para dentro da quina)
   const JAW = Math.tan((14 * Math.PI) / 180);
+  const CORNER_JAW = 1 / Math.tan((38 * Math.PI) / 180);
 
   // peças da mesa: contorno em (x, z) da cena; a forma é desenhada deitada (z da cena = −y da forma)
   const toShape = (pts: [number, number][]) => {
@@ -140,14 +149,14 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     holes.filter((_, i) => withSides || i < 4).map((h) => (axis === 'x' ? { u: h.x, v: h.z, r: h.r } : { u: h.z, v: h.x, r: h.r }));
   const toXZ = (axis: 'x' | 'z', u: number, v: number): [number, number] => (axis === 'x' ? [u, v] : [v, u]);
 
-  // tabela (borracha verde) entre duas caçapas: as pontas são mordidas pelos furos
+  // tabela (borracha verde) entre duas caçapas: as pontas são cortadas retas, inclinadas como na mesa de verdade
   function cushion(axis: 'x' | 'z', u0: number, u1: number, v0: number, v1: number) {
-    const mid = (u0 + u1) / 2;
-    // nas tabelas compridas, a ponta junto da caçapa do meio (u = 0) é a boca inclinada, não um círculo
-    const jaw = (v: number) => sideMouth + Math.abs(v - v0) * JAW;
-    const cs = asUV(axis, false).filter((c) => c.u > u0 - c.r && c.u < u1 + c.r && Math.abs(c.v - (v0 + v1) / 2) < c.r + Math.abs(v1 - v0));
-    const left = (v: number) => Math.max(axis === 'x' && u0 === 0 ? jaw(v) : u0, ...cs.filter((c) => c.u < mid && Math.abs(v - c.v) < c.r).map((c) => c.u + near(v, c.v, c.r)));
-    const right = (v: number) => Math.min(axis === 'x' && u1 === 0 ? -jaw(v) : u1, ...cs.filter((c) => c.u > mid && Math.abs(v - c.v) < c.r).map((c) => c.u - near(v, c.v, c.r)));
+    const half = axis === 'x' ? L / 2 : W / 2; // a quina fica em ±half nessa direção
+    const depth = (v: number) => Math.abs(v - v0); // quanto entra na tabela, a partir da ponta (linha de jogo)
+    const side = (v: number) => sideMouth + depth(v) * JAW;
+    const corner = (v: number) => half - cornerA + depth(v) * CORNER_JAW;
+    const left = (v: number) => (u0 === 0 ? side(v) : -corner(v));
+    const right = (v: number) => (u1 === 0 ? -side(v) : corner(v));
     const N = 14;
     const vs = Array.from({ length: N + 1 }, (_, i) => v0 + ((v1 - v0) * i) / N);
     const pts = [...vs.map((v) => toXZ(axis, right(v), v)), ...vs.reverse().map((v) => toXZ(axis, left(v), v))];

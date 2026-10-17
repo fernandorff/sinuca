@@ -1,7 +1,8 @@
 // Mesas. Unidades em metros; origem no canto (0,0) da área de jogo; x no comprimento.
 export type Pocket = { x: number; y: number; r: number };
-// sideMouth: meia-largura da boca da caçapa do meio, entre as pontas das tabelas (só para o desenho)
-export type Table = { L: number; W: number; R: number; pockets: Pocket[]; sideMouth: number };
+// só para o desenho: sideMouth = meia-largura da boca do meio; cornerMouth = boca do canto, medida na diagonal
+// entre as pontas das tabelas (WPA: 11,4 a 11,75 cm no pool)
+export type Table = { L: number; W: number; R: number; pockets: Pocket[]; sideMouth: number; cornerMouth: number };
 export type BallPos = { id: number; x: number; y: number; pocketed: boolean };
 
 // cantos 0..3 em (0,0),(L,0),(L,W),(0,W), centro 0,6R para fora da borda;
@@ -24,7 +25,7 @@ export const L = 2.54;
 export const W = 1.27;
 export const R = 0.028575;
 export const POCKETS = pockets(L, W, R, 0.062, 0.042, 0.03);
-export const POOL: Table = { L, W, R, pockets: POCKETS, sideMouth: 0.0635 };
+export const POOL: Table = { L, W, R, pockets: POCKETS, sideMouth: 0.0635, cornerMouth: 0.115 };
 export const HEAD_X = L / 4;
 export const FOOT = { x: (L * 3) / 4, y: W / 2 };
 
@@ -33,7 +34,7 @@ export const SNOOKER: Table = (() => {
   const SL = 3.569;
   const SW = 1.778;
   const SR = 0.02625;
-  return { L: SL, W: SW, R: SR, pockets: pockets(SL, SW, SR, 0.05, 0.035, 0.028), sideMouth: 0.0545 };
+  return { L: SL, W: SW, R: SR, pockets: pockets(SL, SW, SR, 0.05, 0.035, 0.028), sideMouth: 0.0545, cornerMouth: 0.089 };
 })();
 export const BAULK_X = 0.737;
 export const D_R = 0.292;
