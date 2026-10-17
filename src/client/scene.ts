@@ -390,9 +390,18 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
     const dir = new THREE.Vector3(dx, 0, dy);
-    const gap = R + 0.012 + pull * 0.22;
-    stick.position.copy(c).addScaledVector(dir, -gap).setY(R + 0.012);
-    stick.rotation.set(0, -angle, 0.06);
+    // a ponta encosta na branca no ponto do efeito (até meio raio do centro, como no bilhar de verdade)
+    // e o cabo sobe ~6° para passar por cima da tabela; o recuo da força é ao longo do próprio taco
+    const ox = cueState.spinX * R * 0.5;
+    const oy = cueState.spinY * R * 0.5;
+    const ELEV = 0.1;
+    const axis = new THREE.Vector3(dx * Math.cos(ELEV), -Math.sin(ELEV), dy * Math.cos(ELEV));
+    stick.position
+      .copy(c)
+      .add(new THREE.Vector3(-dy * ox, oy, dx * ox))
+      .addScaledVector(dir, -Math.sqrt(R * R - ox * ox - oy * oy))
+      .addScaledVector(axis, -(0.008 + pull * 0.22));
+    stick.rotation.set(0, -angle, -ELEV);
 
     const aim = predictAim(current, cue, dx, dy, MODES[mode].table);
     setLine(aimLine, onFelt(cue.x, cue.y), onFelt(aim.end.x, aim.end.y));
