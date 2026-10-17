@@ -7,6 +7,7 @@ const SHOT = { dx: 1, dy: 0, power: 1, spinX: 0, spinY: 0.2 };
 
 function fail(msg) {
   console.error('SMOKE FAIL:', msg);
+  for (const c of globalThis.clients ?? []) console.error(c.name, c.msgs.map((m) => (m.t === 'state' ? 'seat' + m.you.seat + ':' + m.room.phase[0] : m.t === 'error' ? 'E:' + m.code : m.t)).join(' '));
   process.exit(1);
 }
 
@@ -51,6 +52,9 @@ if (!/^[A-Z]{4}$/.test(id ?? '')) fail('bad room id ' + id);
 const lobby = client('/ws/lobby');
 const a = client('/ws/room/' + id, 'smoke-a-00000001', 'Ana');
 const b = client('/ws/room/' + id, 'smoke-b-00000001', 'Bia');
+a.name = 'A';
+b.name = 'B';
+globalThis.clients = [a, b];
 await a.hello();
 await b.hello();
 await a.waitFor((m) => m.t === 'state' && m.room.seats.filter(Boolean).length === 2, 'two seats');
@@ -58,7 +62,11 @@ await lobby.waitFor((m) => m.t === 'rooms' && m.rooms.some((r) => r.id === id &&
 
 a.send({ t: 'start' });
 await b.waitFor((m) => m.t === 'state' && m.room.phase === 'aiming', 'aiming');
-a.send({ t: 'shot', shotNo: 0, shot: SHOT });
+// os hello chegam por conexões diferentes e podem chegar fora de ordem: quem dá a saída vem do servidor
+const aimA = await a.waitFor((m) => m.t === 'state' && m.room.phase === 'aiming', 'aiming (A)');
+const shooter = aimA.you.seat === aimA.room.game.turn ? a : b;
+const seatA = aimA.you.seat;
+shooter.send({ t: 'shot', shotNo: 0, shot: SHOT });
 for (const c of [a, b]) {
   const s = await c.waitFor((m) => m.t === 'shot' && m.shotNo === 0, 'shot broadcast');
   const sim = simulate(s.balls, s.shot);
@@ -74,7 +82,7 @@ await a2.hello();
 await a.waitFor((m) => m.t === 'error' && m.code === 'other_tab', 'other_tab');
 await new Promise((r) => setTimeout(r, 500));
 const last = [...b.msgs].reverse().find((m) => m.t === 'state');
-if (!last.room.seats[0]?.connected) fail('closing the old tab disconnected the new one');
+if (!last.room.seats[seatA]?.connected) fail('closing the old tab disconnected the new one');
 
 for (const c of [a, b, a2, lobby, ghost]) c.ws.close();
 console.log('SMOKE OK', id);
