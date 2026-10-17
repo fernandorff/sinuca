@@ -86,6 +86,8 @@ function startRoom(id: string, name: string) {
   let online = false;
   let animating = false;
   let skip = false;
+  // tacada com bola caindo não pode ser pulada: todo mundo vê a bola entrar (pedido do Fernando, 17/10/2026)
+  let skippable = true;
   let wasMine = false;
   let lastShotNo = -1;
   let queued: PublicRoom | null = null;
@@ -122,7 +124,7 @@ function startRoom(id: string, name: string) {
 
   // Espaço durante a tacada pula a animação (na sua vez, Espaço taca: isso fica nos controles)
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' && animating) {
+    if (e.code === 'Space' && animating && skippable) {
       e.preventDefault();
       skip = true;
     }
@@ -138,7 +140,7 @@ function startRoom(id: string, name: string) {
     start: () => net.send({ t: 'start' }),
     rematch: () => net.send({ t: 'rematch' }),
     rerack: () => net.send({ t: 'rerack' }),
-    skip: () => (skip = true),
+    skip: () => (skip = skippable),
     music(id: TrackId) {
       musicId = id;
       store.set('sinuca:music', id);
@@ -163,7 +165,7 @@ function startRoom(id: string, name: string) {
   };
 
   function draw() {
-    if (room) renderHud(hud, room, you, online, status, muted, animating, musicId, act);
+    if (room) renderHud(hud, room, you, online, status, muted, animating && skippable, musicId, act);
   }
 
   function show(balls: BallPos[]) {
@@ -224,13 +226,14 @@ function startRoom(id: string, name: string) {
   function animate(m: Extract<ServerMsg, { t: 'shot' }>) {
     if (!room) return;
     const { scene, controls } = viewFor(room.mode);
+    const sim = simulate(m.balls, m.shot, undefined, MODES[room.mode].table);
     animating = true;
     skip = false;
+    skippable = !sim.events.some((e) => e.kind === 'pocket');
     controls.enable(null);
     scene.setHighlight([]);
     status = `${room.seats[m.by]?.name ?? 'Alguém'} tacou.`;
     draw();
-    const sim = simulate(m.balls, m.shot, undefined, MODES[room.mode].table);
     // o resultado sai antes da animação: se quem tacou cair, a mesa usa o de outro aparelho
     net.send({ t: 'result', shotNo: m.shotNo, final: sim.final, events: sim.events });
     const power = m.shot.power;
