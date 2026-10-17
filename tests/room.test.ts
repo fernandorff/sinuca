@@ -336,3 +336,24 @@ test('vote kick: only seated players vote, not on themselves; 2 players → 1 vo
   s = run(s, 'a', { t: 'kick', seat: 1 }).state!;
   expect(s.seats[1]).toBeNull();
 });
+
+test('kicked mid-game: their turn is skipped, now and on the next shots', () => {
+  let s = run(roomOf('free', 'a', 'b', 'c'), 'a', { t: 'start' }).state!;
+  s = { ...s, game: { ...s.game!, turn: 1 } };
+  s = run(s, 'a', { t: 'kick', seat: 1 }).state!;
+  s = run(s, 'c', { t: 'kick', seat: 1 }).state!;
+  expect(s.seats[1]).toBeNull();
+  // era a vez dele: passa na hora para o próximo sentado
+  expect(s.game!.turn).toBe(2);
+  // c taca fraco para trás (não acerta nada): a vez iria para 0 (a); depois de a, pularia o 1 e iria para c
+  const soft: Shot = { dx: -1, dy: 0, power: 0.05, spinX: 0, spinY: 0 };
+  const shoot = (st: RoomState, who: string) => {
+    const r = run(st, who, { t: 'shot', shotNo: st.shotNo, shot: soft });
+    const sim = simulate(r.state!.game!.balls, soft);
+    return run(r.state!, who, { t: 'result', shotNo: st.shotNo, final: sim.final, events: sim.events }).state!;
+  };
+  s = shoot(s, 'c');
+  expect(s.game!.turn).toBe(0);
+  s = shoot(s, 'a');
+  expect(s.game!.turn).toBe(2);
+});

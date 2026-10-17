@@ -122,7 +122,18 @@ const withLog = (s: RoomState, line: string): RoomState => ({ ...s, log: [...(s.
 function finish(s: RoomState, final: BallPos[], events: SimEvent[]): RoomState {
   const game = applyFor(s.game!, final, events);
   const line = describeShot(s.game!, game, events, s.seats.map((x) => x?.name ?? null));
-  return withLog({ ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null }, line);
+  return skipEmpty(withLog({ ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null }, line));
+}
+
+// vez de um lugar vazio (de quem foi expulso): passa para o próximo sentado; na bola 8 em time, para o
+// próximo do mesmo time (se o time inteiro saiu, a vez fica e os outros jogam por ele)
+function skipEmpty(s: RoomState): RoomState {
+  const g = s.game;
+  if (!g || s.phase !== 'aiming' || s.seats[g.turn]) return s;
+  const step = g.mode === 'eightball' && g.seats > 2 ? 2 : 1;
+  let turn = g.turn;
+  for (let k = 0; k < g.seats && !s.seats[turn]; k++) turn = (turn + step) % g.seats;
+  return s.seats[turn] ? { ...s, game: { ...g, turn } } : s;
 }
 
 function hello(s: RoomState, playerId: string, name: string): { state: RoomState; out: Out[] } {
@@ -230,9 +241,11 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       const voters = prev.includes(playerId) ? prev.filter((v) => v !== playerId) : [...prev, playerId];
       const next: RoomState = { ...s, kick: [...others, { target: target.playerId, voters }] };
       if (votersOf(next, target.playerId).length < kickNeed(next, target.playerId)) return changed(next);
-      const out = withLog(
-        { ...next, seats: next.seats.map((x, j) => (j === msg.seat ? null : x)), kick: others, kicked: [...(s.kicked ?? []), target.playerId] },
-        `${target.name} foi expulso por votação`,
+      const out = skipEmpty(
+        withLog(
+          { ...next, seats: next.seats.map((x, j) => (j === msg.seat ? null : x)), kick: others, kicked: [...(s.kicked ?? []), target.playerId] },
+          `${target.name} foi expulso por votação`,
+        ),
       );
       const r = changed(out);
       r.out.push({ to: target.playerId, msg: { t: 'error', code: 'kicked', msg: ERRORS.kicked } });
