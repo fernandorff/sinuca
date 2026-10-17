@@ -1,0 +1,82 @@
+import { expect, test } from 'vitest';
+import { HEAD_X, L, R, W, rack, type BallPos } from '../src/shared/table.ts';
+import { simulate, type Body, type Shot } from '../src/shared/physics.ts';
+
+const BREAK: Shot = { dx: 1, dy: 0, power: 1, spinX: 0, spinY: 0 };
+const IMPACT = 0.9 - 2 * R;
+
+function line(): BallPos[] {
+  return [
+    { id: 0, x: IMPACT - 0.01, y: W / 2, pocketed: false },
+    { id: 1, x: 0.9, y: W / 2, pocketed: false },
+  ];
+}
+
+// posição da branca quando a bola 1 passa de x = 2.2 (antes de voltar da tabela)
+function cueXWhenObjectFar(spinY: number): number {
+  let cueX = NaN;
+  simulate(line(), { dx: 1, dy: 0, power: 0.4, spinX: 0, spinY }, (bodies) => {
+    if (Number.isNaN(cueX) && bodies[1].x > 2.2) cueX = bodies[0].x;
+  });
+  return cueX;
+}
+
+test('deterministic', () => {
+  expect(simulate(rack(), BREAK)).toEqual(simulate(rack(), BREAK));
+});
+
+test('energy never increases without english', () => {
+  let prev = Infinity;
+  let worst = -Infinity;
+  simulate(rack(), BREAK, (bodies: Body[]) => {
+    let e = 0;
+    for (const b of bodies) e += (b.vx * b.vx + b.vy * b.vy) / 2 + (b.wx * b.wx + b.wy * b.wy) / 5;
+    worst = Math.max(worst, e - prev);
+    prev = e;
+  });
+  expect(worst).toBeLessThanOrEqual(1e-9);
+});
+
+test('stop shot: centered full hit, cue nearly stops', () => {
+  expect(Math.abs(cueXWhenObjectFar(0) - IMPACT)).toBeLessThan(0.05);
+});
+
+test('draw: spinY -1 cue ends left of impact point', () => {
+  expect(cueXWhenObjectFar(-1)).toBeLessThan(IMPACT - 0.05);
+});
+
+test('follow: spinY +1 cue ends right of impact point', () => {
+  expect(cueXWhenObjectFar(1)).toBeGreaterThan(IMPACT + 0.05);
+});
+
+test('no ball leaves the table', () => {
+  let seed = 1;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  let balls = rack();
+  for (let i = 0; i < 50; i++) {
+    const cue = balls.find((b) => b.id === 0)!;
+    if (cue.pocketed) Object.assign(cue, { x: HEAD_X, y: W / 2, pocketed: false });
+    const a = rnd() * 2 * Math.PI;
+    balls = simulate(balls, { dx: Math.cos(a), dy: Math.sin(a), power: 0.2 + rnd() * 0.8, spinX: rnd() * 1.2 - 0.6, spinY: rnd() * 1.2 - 0.6 }).final;
+    for (const b of balls) {
+      if (b.pocketed) continue;
+      expect(b.x).toBeGreaterThanOrEqual(R - 1e-9);
+      expect(b.x).toBeLessThanOrEqual(L - R + 1e-9);
+      expect(b.y).toBeGreaterThanOrEqual(R - 1e-9);
+      expect(b.y).toBeLessThanOrEqual(W - R + 1e-9);
+    }
+  }
+});
+
+test('corner pocket', () => {
+  const balls: BallPos[] = [
+    { id: 0, x: 0.3, y: 0.3, pocketed: false },
+    { id: 1, x: 0.1, y: 0.1, pocketed: false },
+  ];
+  const { events } = simulate(balls, { dx: -Math.SQRT1_2, dy: -Math.SQRT1_2, power: 0.3, spinX: 0, spinY: 0 });
+  expect(events).toContainEqual(expect.objectContaining({ kind: 'pocket', ball: 1, pocket: 0 }));
+});
+
+test('all balls stop', () => {
+  expect(simulate(rack(), BREAK).steps).toBeLessThan(240 * 20);
+});
