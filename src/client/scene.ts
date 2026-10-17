@@ -189,8 +189,7 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   felt.rotation.x = -Math.PI / 2;
   felt.receiveShadow = true;
   scene.add(felt);
-  // dentro da caçapa: aro escuro de couro na boca (do topo da madeira até o pano) e uma redinha embaixo
-  const rimMat = new THREE.MeshStandardMaterial({ color: '#1a120c', roughness: 0.8, side: THREE.DoubleSide });
+  // dentro da caçapa: uma redinha embaixo do pano (o buraco é uma abertura no chão verde, sem parede em pé)
   const netTexture = (() => {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
@@ -214,9 +213,6 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     return t;
   })();
   for (const h of holes) {
-    const top = RAIL_H + 0.006;
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.998, h.r * 0.998, top, 40, 1, true), rimMat);
-    rim.position.set(h.x, top / 2, h.z);
     // a rede afunila e tem a malha repetida em volta; o fundo é a mesma rede
     const wallTex = netTexture.clone();
     wallTex.repeat.set(10, 2);
@@ -230,7 +226,7 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     const bottom = new THREE.Mesh(new THREE.CircleGeometry(h.r * 0.85, 32), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 1 }));
     bottom.rotation.x = -Math.PI / 2;
     bottom.position.set(h.x, -POCKET_DEPTH, h.z);
-    scene.add(rim, net, bottom);
+    scene.add(net, bottom);
   }
 
   const cushionMat = new THREE.MeshStandardMaterial({ color: CUSHION, roughness: 0.9 });
