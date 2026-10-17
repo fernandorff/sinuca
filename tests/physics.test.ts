@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { HEAD_X, L, R, W, rack, type BallPos } from '../src/shared/table.ts';
+import { HEAD_X, L, R, SNOOKER, W, rack, snookerRack, type BallPos } from '../src/shared/table.ts';
 import { simulate, type Body, type Shot } from '../src/shared/physics.ts';
 
 const BREAK: Shot = { dx: 1, dy: 0, power: 1, spinX: 0, spinY: 0 };
@@ -79,4 +79,38 @@ test('corner pocket', () => {
 
 test('all balls stop', () => {
   expect(simulate(rack(), BREAK).steps).toBeLessThan(240 * 20);
+});
+
+test('snooker table: no ball leaves the table', () => {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  let balls = snookerRack();
+  const { L: SL, W: SW, R: SR } = SNOOKER;
+  for (let i = 0; i < 40; i++) {
+    const cue = balls.find((b) => b.id === 0)!;
+    if (cue.pocketed) Object.assign(cue, { x: 0.6, y: SW / 2, pocketed: false });
+    const a = rnd() * 2 * Math.PI;
+    balls = simulate(balls, { dx: Math.cos(a), dy: Math.sin(a), power: 0.2 + rnd() * 0.8, spinX: 0, spinY: 0 }, undefined, SNOOKER).final;
+    for (const b of balls) {
+      if (b.pocketed) continue;
+      expect(b.x).toBeGreaterThanOrEqual(SR - 1e-9);
+      expect(b.x).toBeLessThanOrEqual(SL - SR + 1e-9);
+      expect(b.y).toBeGreaterThanOrEqual(SR - 1e-9);
+      expect(b.y).toBeLessThanOrEqual(SW - SR + 1e-9);
+    }
+  }
+  expect(balls.filter((b) => b.pocketed).length).toBeGreaterThan(0);
+});
+
+test('snooker table: a ball beyond the pool length stays put', () => {
+  const { final } = simulate(snookerRack(), { dx: 1, dy: 0, power: 0.05, spinX: 0, spinY: 0 }, undefined, SNOOKER);
+  const black = final.find((b) => b.id === 21)!;
+  expect(black.pocketed).toBe(false);
+  expect(black.x).toBeCloseTo(SNOOKER.L - 0.324, 6);
+});
+
+test('hit and cushion events carry impact speed', () => {
+  const { events } = simulate(rack(), BREAK);
+  const hit = events.find((e) => e.kind === 'hit');
+  expect(hit && 'v' in hit && hit.v).toBeGreaterThan(1);
 });

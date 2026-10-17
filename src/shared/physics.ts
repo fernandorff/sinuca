@@ -1,11 +1,11 @@
 // Física 2D determinística: só + - * / e Math.sqrt, passo fixo.
 // Seno, cosseno, atan2 e hypot ficam fora daqui: não arredondam igual em todos os navegadores.
-import { L, POCKETS, R, W, type BallPos } from './table.ts';
+import { POOL, type BallPos, type Table } from './table.ts';
 
 export type Shot = { dx: number; dy: number; power: number; spinX: number; spinY: number };
 export type SimEvent =
-  | { step: number; kind: 'hit'; a: number; b: number }
-  | { step: number; kind: 'cushion'; ball: number }
+  | { step: number; kind: 'hit'; a: number; b: number; v?: number }
+  | { step: number; kind: 'cushion'; ball: number; v?: number }
   | { step: number; kind: 'pocket'; ball: number; pocket: number };
 // w = velocidade do ponto de contato se a bola rolasse (ω×R); side = efeito lateral
 export type Body = BallPos & { vx: number; vy: number; wx: number; wy: number; side: number };
@@ -21,12 +21,14 @@ const REST = 0.005;
 const MAX_STEPS = 240 * 20;
 
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
+const round2 = (n: number) => Math.round(n * 100) / 100;
 const len = (x: number, y: number) => Math.sqrt(x * x + y * y);
 
 export function simulate(
   start: BallPos[],
   shot: Shot,
   onStep?: (bodies: Body[], step: number) => void,
+  table: Table = POOL,
 ): { final: BallPos[]; events: SimEvent[]; frames: BallPos[][]; steps: number } {
   const bodies: Body[] = start.map((b) => ({ ...b, vx: 0, vy: 0, wx: 0, wy: 0, side: 0 }));
   const events: SimEvent[] = [];
@@ -55,8 +57,8 @@ export function simulate(
       b.y += b.vy * DT;
       if (b.vx || b.vy || b.wx || b.wy) moving = true;
     }
-    collideBalls(bodies, step, events);
-    for (const b of bodies) if (!b.pocketed) cushionsAndPockets(b, step, events);
+    collideBalls(bodies, step, events, table.R);
+    for (const b of bodies) if (!b.pocketed) cushionsAndPockets(b, step, events, table);
     onStep?.(bodies, step);
     if (step % 4 === 0) frames.push(snap());
     if (!moving) break;
@@ -98,7 +100,7 @@ function friction(b: Body) {
   b.side *= 0.995;
 }
 
-function collideBalls(bodies: Body[], step: number, events: SimEvent[]) {
+function collideBalls(bodies: Body[], step: number, events: SimEvent[], R: number) {
   for (let i = 0; i < bodies.length; i++) {
     const a = bodies[i];
     if (a.pocketed) continue;
@@ -119,7 +121,8 @@ function collideBalls(bodies: Body[], step: number, events: SimEvent[]) {
         a.vy += k * ny;
         b.vx -= k * nx;
         b.vy -= k * ny;
-        events.push({ step, kind: 'hit', a: a.id, b: b.id });
+        // v = velocidade do impacto (para o volume do som); arredondada, não entra nas regras
+        events.push({ step, kind: 'hit', a: a.id, b: b.id, v: round2(-approach) });
       }
       const push = (2 * R - d) / 2;
       a.x -= nx * push;
@@ -130,15 +133,16 @@ function collideBalls(bodies: Body[], step: number, events: SimEvent[]) {
   }
 }
 
-function cushionsAndPockets(b: Body, step: number, events: SimEvent[]) {
-  for (let p = 0; p < POCKETS.length; p++) {
-    const pk = POCKETS[p];
+function cushionsAndPockets(b: Body, step: number, events: SimEvent[], table: Table) {
+  const { L, W, R, pockets } = table;
+  for (let p = 0; p < pockets.length; p++) {
+    const pk = pockets[p];
     if (len(b.x - pk.x, b.y - pk.y) < pk.r) return pocket(b, p, step, events);
   }
-  const inMouth = POCKETS.some((pk) => len(b.x - pk.x, b.y - pk.y) < pk.r + R);
+  const inMouth = pockets.some((pk) => len(b.x - pk.x, b.y - pk.y) < pk.r + R);
   if (inMouth) {
     // na boca da caçapa não há tabela; se o centro sair da mesa, a bola caiu na caçapa mais próxima
-    if (b.x < 0 || b.x > L || b.y < 0 || b.y > W) pocket(b, nearestPocket(b), step, events);
+    if (b.x < 0 || b.x > L || b.y < 0 || b.y > W) pocket(b, nearestPocket(b, pockets), step, events);
     return;
   }
   if (b.x < R) cushion(b, 1, 0, R - b.x, step, events);
@@ -172,13 +176,13 @@ function cushion(b: Body, nx: number, ny: number, depth: number, step: number, e
     b.wy -= (1 + E_CUSHION) * wn * ny;
   }
   b.side = 0;
-  events.push({ step, kind: 'cushion', ball: b.id });
+  events.push({ step, kind: 'cushion', ball: b.id, v: round2(-vn) });
 }
 
-function nearestPocket(b: Body): number {
+function nearestPocket(b: Body, pockets: Table['pockets']): number {
   let best = 0;
   let bestD = Infinity;
-  POCKETS.forEach((pk, i) => {
+  pockets.forEach((pk, i) => {
     const d = len(b.x - pk.x, b.y - pk.y);
     if (d < bestD) {
       bestD = d;
