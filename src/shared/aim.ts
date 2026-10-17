@@ -48,17 +48,27 @@ export function predictAim(balls: BallPos[], cue: P, dx: number, dy: number, tab
   };
 }
 
-// Caminho da branca depois do choque, com a força e o efeito de verdade: simula só a branca e a primeira bola
-// do caminho (as outras não entram, para ficar leve a cada movimento da mira). Até `len` metros depois do choque.
-export function cuePath(balls: BallPos[], shot: Shot, table: Table, len = 0.3): P[] | null {
+// Prévia com a força e o efeito de verdade: caminho da branca até `len` metros depois do choque e a direção
+// em que a bola acertada sai (com o desvio do efeito). Simula só a branca e a primeira bola do caminho
+// (as outras não entram, para ficar leve a cada movimento da mira).
+export function shotPreview(balls: BallPos[], shot: Shot, table: Table, len = 0.3): { cue: P[] | null; targetDir: P } | null {
   const cue = balls.find((b) => b.id === 0 && !b.pocketed);
   if (!cue) return null;
   const aim = predictAim(balls, cue, shot.dx, shot.dy, table);
   const target = balls.find((b) => b.id === aim.target);
   if (!target) return null;
-  const sim = simulate([cue, target], shot, undefined, table);
+  let targetDir: P | null = null;
+  const sim = simulate(
+    [cue, target],
+    shot,
+    (bodies) => {
+      const v = Math.sqrt(bodies[1].vx * bodies[1].vx + bodies[1].vy * bodies[1].vy);
+      if (!targetDir && v > 0) targetDir = { x: bodies[1].vx / v, y: bodies[1].vy / v };
+    },
+    table,
+  );
   const hit = sim.events.find((e) => e.kind === 'hit');
-  if (!hit) return null;
+  if (!hit || !targetDir) return null;
   const path: P[] = [];
   let walked = 0;
   for (let i = Math.floor(hit.step / 4); i < sim.frames.length && walked < len; i++) {
@@ -68,5 +78,5 @@ export function cuePath(balls: BallPos[], shot: Shot, table: Table, len = 0.3): 
     if (prev) walked += Math.sqrt((p.x - prev.x) * (p.x - prev.x) + (p.y - prev.y) * (p.y - prev.y));
     path.push({ x: p.x, y: p.y });
   }
-  return path.length > 1 ? path : null;
+  return { cue: path.length > 1 ? path : null, targetDir };
 }

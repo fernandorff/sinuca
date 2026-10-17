@@ -16,6 +16,8 @@ const MU_R = 0.01;
 const DT = 1 / 240;
 const MAX_SPEED = 6;
 const E_BALL = 0.95;
+// atrito entre bolas: limita o desvio (throw) da bola acertada a uns 3°
+const MU_BALL = 0.06;
 const E_CUSHION = 0.75;
 const REST = 0.005;
 const MAX_STEPS = 240 * 20;
@@ -135,6 +137,20 @@ function collideBalls(bodies: Body[], step: number, events: SimEvent[], R: numbe
         a.vy += k * ny;
         b.vx -= k * nx;
         b.vy -= k * ny;
+        // throw: o ponto de contato da branca escorrega de lado na outra bola (pelo corte e pelo efeito lateral)
+        // e o atrito arrasta a bola acertada junto. Efeito à direita gira o ponto da frente para a esquerda.
+        // t = esquerda da normal; 1/7 é a massa efetiva (duas bolas, andando e girando); limite = atrito × impulso
+        const tx = ny;
+        const ty = -nx;
+        const slip = -(rvx * tx + rvy * ty) + a.side + b.side;
+        const cap = -MU_BALL * k;
+        const jt = Math.max(-cap, Math.min(cap, slip / 7));
+        b.vx += jt * tx;
+        b.vy += jt * ty;
+        a.vx -= jt * tx;
+        a.vy -= jt * ty;
+        a.side -= 2.5 * jt;
+        b.side -= 2.5 * jt;
         // o resto do passo já com as velocidades novas
         a.x += a.vx * t;
         a.y += a.vy * t;

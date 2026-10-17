@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { MODES, type Mode } from '../shared/rules/index.ts';
-import { cuePath, predictAim } from '../shared/aim.ts';
+import { predictAim, shotPreview } from '../shared/aim.ts';
 import { BAULK_X, D_R, type BallPos } from '../shared/table.ts';
 import { ballLook } from './look.ts';
 
@@ -371,7 +371,7 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   let cueState = { visible: false, angle: 0, pull: 0, power: 0, spinX: 0, spinY: 0 };
   // o caminho da branca sai de uma simulação: só refaz quando a mira, a força, o efeito ou as bolas mudam
   let pathKey = '';
-  let pathPts: { x: number; y: number }[] | null = null;
+  let preview: ReturnType<typeof shotPreview> = null;
   let camMode: 'aim' | 'top' = 'top';
   let follow: { x: number; y: number } | null = null;
 
@@ -400,20 +400,25 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       ghost.visible = targetLine.visible = true;
       ghost.position.copy(toScene(aim.ghost.x, aim.ghost.y));
       const t = last.get(aim.target)!;
-      setLine(targetLine, onFelt(t.x, t.y), onFelt(t.x + aim.targetDir.x * 0.32, t.y + aim.targetDir.y * 0.32));
-      // com força escolhida (sua vez), a linha da branca mostra o efeito; sem ela (vendo o outro), só a tangente
+      // com a força conhecida, as duas linhas saem da física (efeito e desvio inclusos); sem ela
+      // (outro jogador num cliente antigo), a geometria do choque
       const { power, spinX, spinY } = cueState;
       if (power > 0) {
         const key = [dx, dy, power, spinX, spinY, cue.x, cue.y, t.x, t.y].join();
         if (key !== pathKey) {
           pathKey = key;
-          pathPts = cuePath(current, { dx, dy, power, spinX, spinY }, MODES[mode].table);
+          preview = shotPreview(current, { dx, dy, power, spinX, spinY }, MODES[mode].table);
         }
-        if (pathPts) {
-          cueLine.visible = true;
-          setLine(cueLine, onFelt(aim.ghost.x, aim.ghost.y), ...pathPts.map((p) => onFelt(p.x, p.y)));
-        }
-      } else if (aim.cueDir) {
+      } else {
+        preview = null;
+        pathKey = '';
+      }
+      const td = preview?.targetDir ?? aim.targetDir;
+      setLine(targetLine, onFelt(t.x, t.y), onFelt(t.x + td.x * 0.32, t.y + td.y * 0.32));
+      if (preview?.cue) {
+        cueLine.visible = true;
+        setLine(cueLine, onFelt(aim.ghost.x, aim.ghost.y), ...preview.cue.map((p) => onFelt(p.x, p.y)));
+      } else if (!preview && aim.cueDir) {
         cueLine.visible = true;
         setLine(cueLine, onFelt(aim.ghost.x, aim.ghost.y), onFelt(aim.ghost.x + aim.cueDir.x * 0.18, aim.ghost.y + aim.cueDir.y * 0.18));
       }

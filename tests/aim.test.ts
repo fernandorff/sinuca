@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { cuePath, predictAim } from '../src/shared/aim.ts';
+import { predictAim, shotPreview } from '../src/shared/aim.ts';
 import { newGameFor, highlightIds } from '../src/shared/rules/index.ts';
 import { POOL, R, W, type BallPos } from '../src/shared/table.ts';
 
@@ -47,7 +47,7 @@ test('highlight: eight-ball shows the shooter group once assigned', () => {
 test('cue path after contact: top spin follows forward, back spin draws back', () => {
   const balls = [ball(0, cue.x, cue.y), ball(3, 1.2, W / 2 + R * 0.4)];
   const end = (spinY: number) => {
-    const p = cuePath(balls, { dx: 1, dy: 0, power: 0.4, spinX: 0, spinY }, POOL)!;
+    const p = shotPreview(balls, { dx: 1, dy: 0, power: 0.4, spinX: 0, spinY }, POOL)!.cue!;
     return p[p.length - 1].x - p[0].x;
   };
   expect(end(1)).toBeGreaterThan(0.05);
@@ -55,5 +55,13 @@ test('cue path after contact: top spin follows forward, back spin draws back', (
 });
 
 test('cue path: no ball on the line, no path', () => {
-  expect(cuePath([ball(0, cue.x, cue.y)], { dx: 1, dy: 0, power: 0.4, spinX: 0, spinY: 0 }, POOL)).toBeNull();
+  expect(shotPreview([ball(0, cue.x, cue.y)], { dx: 1, dy: 0, power: 0.4, spinX: 0, spinY: 0 }, POOL)).toBeNull();
+});
+
+test('preview: the yellow line follows the english (right english throws the ball to the left)', () => {
+  const balls = [ball(0, cue.x, cue.y), ball(3, 1.2, W / 2)];
+  const dir = (spinX: number) => shotPreview(balls, { dx: 1, dy: 0, power: 0.4, spinX, spinY: 0 }, POOL)!.targetDir;
+  expect(dir(0).y).toBeCloseTo(0, 6);
+  expect(dir(1).y).toBeLessThan(-0.02);
+  expect(dir(-1).y).toBeGreaterThan(0.02);
 });

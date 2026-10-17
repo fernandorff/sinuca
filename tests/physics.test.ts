@@ -128,22 +128,41 @@ test('side pocket: a ball through the mouth drops, one hitting the jaw bounces b
   expect(jaw.events).toContainEqual(expect.objectContaining({ kind: 'cushion', ball: 0 }));
 });
 
-test('cut shot: the object ball leaves along the line of centres, soft or hard', () => {
-  // bola alvo 0,8R acima da linha da tacada: no contato, a linha dos centros sobe 0,4 (seno do corte)
-  const ny = 0.4;
-  const nx = Math.sqrt(1 - ny * ny);
-  for (const power of [0.2, 0.6, 1]) {
-    const balls: BallPos[] = [
-      { id: 0, x: 0.5, y: W / 2, pocketed: false },
-      { id: 3, x: 1.2, y: W / 2 + R * 0.8, pocketed: false },
-    ];
-    let dir: { x: number; y: number } | null = null;
-    simulate(balls, { dx: 1, dy: 0, power, spinX: 0, spinY: 0 }, (bodies) => {
-      const b = bodies[1];
-      const v = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-      if (!dir && v > 0) dir = { x: b.vx / v, y: b.vy / v };
-    });
-    // menos de 0,5° de erro
-    expect(dir!.x * nx + dir!.y * ny).toBeGreaterThan(Math.cos((0.5 * Math.PI) / 180));
-  }
+// direção da bola alvo logo depois do choque (corte com a bola alvo 0,8R acima da linha da tacada)
+function objectDir(power: number, spinX: number, offset = 0.8): { x: number; y: number } {
+  const balls: BallPos[] = [
+    { id: 0, x: 0.5, y: W / 2, pocketed: false },
+    { id: 3, x: 1.2, y: W / 2 + R * offset, pocketed: false },
+  ];
+  let dir: { x: number; y: number } | null = null;
+  simulate(balls, { dx: 1, dy: 0, power, spinX, spinY: 0 }, (bodies) => {
+    const b = bodies[1];
+    const v = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    if (!dir && v > 0) dir = { x: b.vx / v, y: b.vy / v };
+  });
+  return dir!;
+}
+const deg = (d: { x: number; y: number }) => (Math.atan2(d.y, d.x) * 180) / Math.PI;
+// no contato, a linha dos centros sobe 0,4 (seno do corte): 23,58°
+const CENTRES = (Math.asin(0.4) * 180) / Math.PI;
+
+test('cut shot: same direction soft or hard (the contact is found at the exact moment)', () => {
+  expect(Math.abs(deg(objectDir(0.2, 0)) - deg(objectDir(1, 0)))).toBeLessThan(0.5);
+});
+
+test('throw: the object ball leaves a few degrees off the line of centres; outside english reduces it', () => {
+  const none = deg(objectDir(0.5, 0));
+  const inside = deg(objectDir(0.5, 1));
+  const outside = deg(objectDir(0.5, -1));
+  for (const a of [none, inside, outside]) expect(Math.abs(a - CENTRES)).toBeLessThan(5);
+  // o corte sozinho já empurra a bola para a frente (ângulo menor que o dos centros)
+  expect(none).toBeLessThan(CENTRES - 1);
+  expect(outside).toBeGreaterThan(none + 1);
+});
+
+test('throw on a straight shot: english to the right sends the ball a little to the left, and vice versa', () => {
+  // y cresce para a direita de quem taca na direção +x
+  expect(objectDir(0.5, 0, 0).y).toBeCloseTo(0, 6);
+  expect(objectDir(0.5, 1, 0).y).toBeLessThan(-0.02);
+  expect(objectDir(0.5, -1, 0).y).toBeGreaterThan(0.02);
 });
