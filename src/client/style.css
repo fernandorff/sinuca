@@ -132,3 +132,6 @@ body.in-room::after { content: ''; position: fixed; inset: 0; pointer-events: no
 .video-box[hidden] { display: none; }
 .video-box.mini { width: 2px; height: 2px; opacity: 0; pointer-events: none; border: 0; }
 .video-box iframe { width: 100%; height: 100%; display: block; }
+.status.kick-alert { background: rgba(140, 30, 30, .88); color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.status.kick-alert button { min-height: 28px; padding: 2px 10px; font-size: .8rem; }
+.status.kick-alert button.on { background: var(--bad); border-color: #fff; }

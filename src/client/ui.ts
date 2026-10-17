@@ -283,6 +283,22 @@ export function renderHud(
     g && tray(room.mode, g),
     animating && el('button', { type: 'button', class: 'skip', onclick: act.skip }, 'Pular ⏭'),
     el('div', { class: 'status' }, status),
+    // votação aberta aparece para todos, não só no menu (pedido do Fernando, 17/10/2026)
+    ...room.seats.flatMap((x, i) => {
+      const votes = room.kickVotes?.[i] ?? 0;
+      if (!x || votes === 0) return [];
+      const need = Math.floor(room.seats.filter((y, j) => y?.connected && j !== i).length / 2) + 1;
+      const mine = you.voted.includes(i);
+      const who = i === you.seat ? 'você' : x.name;
+      return [
+        el(
+          'div',
+          { class: 'status kick-alert', role: 'status' },
+          `Votação para expulsar ${who}: ${votes} de ${need} votos. `,
+          you.seat !== null && i !== you.seat && el('button', { type: 'button', class: mine ? 'on' : '', onclick: () => act.kick(i, x.name, !mine && votes + 1 >= need) }, mine ? 'Tirar voto' : 'Votar'),
+        ),
+      ];
+    }),
     logOpen &&
       el(
         'ol',
