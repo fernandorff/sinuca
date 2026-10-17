@@ -94,25 +94,63 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   Object.assign(lamp.shadow.camera, { left: -L / 2 - 0.3, right: L / 2 + 0.3, top: W / 2 + 0.3, bottom: -W / 2 - 0.3, near: 1, far: 5 });
   scene.add(lamp);
 
-  // caçapas: furo de verdade no pano, inteiro dentro do feltro, com uma caçapa funda embaixo.
-  // O desenho fica um pouco para dentro do centro de captura da física; a bola rola até ele e cai.
-  const edgeX = L / 2 + CUSHION_W;
-  const edgeZ = W / 2 + CUSHION_W;
-  const holes = pockets.map((p, i) => {
-    const sx = Math.sign(p.x - L / 2);
-    const sz = Math.sign(p.y - W / 2);
-    return { x: i < 4 ? sx * (edgeX - p.r * 1.02) : 0, z: sz * (edgeZ - p.r * 1.02), r: p.r, count: 0 };
-  });
+  // caçapas: o furo fica no centro real da caçapa (o mesmo da física), cavado na quina e na parede;
+  // o feltro, as tabelas e a moldura são recortados em volta dele, e embaixo fica uma caçapa funda.
+  const outerL = L + 2 * CUSHION_W + 2 * FRAME_W;
+  const outerW = W + 2 * CUSHION_W + 2 * FRAME_W;
   const POCKET_DEPTH = 0.13;
+  const holes = pockets.map((p) => ({ x: p.x - L / 2, z: p.y - W / 2, r: p.r * 1.1, count: 0 }));
 
-  // mesa: feltro com os furos, tabelas entre as caçapas, moldura de madeira
-  const feltShape = new THREE.Shape();
-  feltShape.moveTo(-edgeX, -edgeZ);
-  feltShape.lineTo(edgeX, -edgeZ);
-  feltShape.lineTo(edgeX, edgeZ);
-  feltShape.lineTo(-edgeX, edgeZ);
-  feltShape.closePath();
-  // o pano é desenhado deitado (rotação −90° em x): o z da cena vira −y da forma
+  // peças da mesa: contorno em (x, z) da cena; a forma é desenhada deitada (z da cena = −y da forma)
+  const toShape = (pts: [number, number][]) => {
+    const sh = new THREE.Shape();
+    pts.forEach(([x, z], i) => (i ? sh.lineTo(x, -z) : sh.moveTo(x, -z)));
+    sh.closePath();
+    return sh;
+  };
+  const BEVEL = 0.004;
+  const solid = (shape: THREE.Shape, depth: number, mat: THREE.Material, base: number) => {
+    // cantos arredondados (chanfro) em vez de caixas retas
+    const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: BEVEL, bevelSize: BEVEL, bevelSegments: 3, curveSegments: 6 });
+    const m = new THREE.Mesh(geo, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = base + BEVEL;
+    m.castShadow = m.receiveShadow = true;
+    scene.add(m);
+  };
+  const near = (u: number, cu: number, r: number) => Math.sqrt(Math.max(0, r * r - (u - cu) * (u - cu)));
+  const asUV = (axis: 'x' | 'z') => holes.map((h) => (axis === 'x' ? { u: h.x, v: h.z, r: h.r } : { u: h.z, v: h.x, r: h.r }));
+  const toXZ = (axis: 'x' | 'z', u: number, v: number): [number, number] => (axis === 'x' ? [u, v] : [v, u]);
+
+  // tabela (borracha verde) entre duas caçapas: as pontas são mordidas pelos furos
+  function cushion(axis: 'x' | 'z', u0: number, u1: number, v0: number, v1: number) {
+    const mid = (u0 + u1) / 2;
+    const cs = asUV(axis).filter((c) => c.u > u0 - c.r && c.u < u1 + c.r && Math.abs(c.v - (v0 + v1) / 2) < c.r + Math.abs(v1 - v0));
+    const left = (v: number) => Math.max(u0, ...cs.filter((c) => c.u < mid && Math.abs(v - c.v) < c.r).map((c) => c.u + near(v, c.v, c.r)));
+    const right = (v: number) => Math.min(u1, ...cs.filter((c) => c.u > mid && Math.abs(v - c.v) < c.r).map((c) => c.u - near(v, c.v, c.r)));
+    const N = 14;
+    const vs = Array.from({ length: N + 1 }, (_, i) => v0 + ((v1 - v0) * i) / N);
+    const pts = [...vs.map((v) => toXZ(axis, right(v), v)), ...vs.reverse().map((v) => toXZ(axis, left(v), v))];
+    solid(toShape(pts), RAIL_H - 2 * BEVEL, cushionMat, 0);
+  }
+
+  // moldura de madeira: a borda de dentro ganha uma mordida redonda em cada caçapa
+  function frame(axis: 'x' | 'z', u0: number, u1: number, vIn: number, vOut: number) {
+    const sign = Math.sign(vOut);
+    const cs = asUV(axis).filter((c) => Math.sign(c.v) === sign);
+    const inner = (u: number) => {
+      let d = Math.abs(vIn);
+      for (const c of cs) if (Math.abs(u - c.u) < c.r) d = Math.max(d, Math.abs(c.v) + near(u, c.u, c.r));
+      return sign * Math.min(d, Math.abs(vOut) - 0.01);
+    };
+    const steps = Math.ceil((u1 - u0) / 0.004);
+    const us = Array.from({ length: steps + 1 }, (_, i) => u0 + ((u1 - u0) * i) / steps);
+    const pts = [...us.map((u) => toXZ(axis, u, inner(u))), toXZ(axis, u1, vOut), toXZ(axis, u0, vOut)];
+    solid(toShape(pts), frameH - 2 * BEVEL, woodMat, RAIL_H + 0.01 - frameH);
+  }
+
+  // feltro: cobre até a borda da moldura, com os furos (assim cada furo fica inteiro dentro dele)
+  const feltShape = toShape([[-outerL / 2, -outerW / 2], [outerL / 2, -outerW / 2], [outerL / 2, outerW / 2], [-outerL / 2, outerW / 2]]);
   for (const h of holes) feltShape.holes.push(new THREE.Path().absarc(h.x, -h.z, h.r, 0, Math.PI * 2, true));
   const felt = new THREE.Mesh(new THREE.ShapeGeometry(feltShape, 48), new THREE.MeshStandardMaterial({ color: FELT, roughness: 0.95 }));
   felt.rotation.x = -Math.PI / 2;
@@ -136,27 +174,22 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     m.castShadow = m.receiveShadow = true;
     scene.add(m);
   };
-  // as aberturas das tabelas acompanham o tamanho das caçapas de cada mesa
-  const corner = pockets[0].r * 1.45;
-  const side = pockets[4].r * 1.35;
-  const longSeg = L / 2 - corner - side;
-  for (const z of [-(W / 2 + CUSHION_W / 2), W / 2 + CUSHION_W / 2]) {
-    box(longSeg, RAIL_H, CUSHION_W, -L / 4 + (side - corner) / 2, RAIL_H / 2, z, cushionMat);
-    box(longSeg, RAIL_H, CUSHION_W, L / 4 - (side - corner) / 2, RAIL_H / 2, z, cushionMat);
-  }
-  for (const x of [-(L / 2 + CUSHION_W / 2), L / 2 + CUSHION_W / 2]) box(CUSHION_W, RAIL_H, W - 2 * corner, x, RAIL_H / 2, 0, cushionMat);
-  const outerL = L + 2 * CUSHION_W + 2 * FRAME_W;
-  const outerW = W + 2 * CUSHION_W + 2 * FRAME_W;
   // a moldura desce como uma saia, escondendo o vão embaixo do pano onde ficam as caçapas
   const frameH = RAIL_H + 0.01 + POCKET_DEPTH + 0.03;
-  const frameY = RAIL_H + 0.01 - frameH / 2;
-  for (const z of [-(outerW / 2 - FRAME_W / 2), outerW / 2 - FRAME_W / 2]) box(outerL, frameH, FRAME_W, 0, frameY, z, woodMat);
-  for (const x of [-(outerL / 2 - FRAME_W / 2), outerL / 2 - FRAME_W / 2]) box(FRAME_W, frameH, outerW - 2 * FRAME_W, x, frameY, 0, woodMat);
+  const eL = L / 2 + CUSHION_W;
+  const eW = W / 2 + CUSHION_W;
+  for (const s of [-1, 1]) {
+    cushion('x', -eL, 0, s * (W / 2), s * eW);
+    cushion('x', 0, eL, s * (W / 2), s * eW);
+    cushion('z', -eW, eW, s * (L / 2), s * eL);
+    frame('x', -outerL / 2, outerL / 2, s * eW, s * (outerW / 2));
+    frame('z', -eW, eW, s * eL, s * (outerL / 2));
+  }
   box(outerL + 0.04, 0.5, outerW + 0.04, 0, -(POCKET_DEPTH + 0.02) - 0.25, 0, woodMat);
   // sombra suave na boca de cada caçapa
   const lipMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.4, depthWrite: false });
   for (const h of holes) {
-    const lip = new THREE.Mesh(new THREE.RingGeometry(h.r, h.r * 1.2, 40), lipMat);
+    const lip = new THREE.Mesh(new THREE.RingGeometry(h.r, h.r * 1.18, 40), lipMat);
     lip.rotation.x = -Math.PI / 2;
     lip.position.set(h.x, 0.0012, h.z);
     scene.add(lip);
