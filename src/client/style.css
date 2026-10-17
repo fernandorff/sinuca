@@ -81,3 +81,12 @@ h2 { font-size: 1.05rem; margin: 0 0 10px; color: var(--muted); font-weight: 600
 /* vinheta: escurece as bordas, como luz de bar concentrada na mesa */
 body.in-room::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 55%, transparent 55%, rgba(0, 0, 0, .55) 100%); z-index: 1; }
 .hud, .controls { z-index: 2; }
+.banner { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; font-size: clamp(2rem, 7vw, 4rem); font-weight: 900; letter-spacing: .02em; color: var(--fg); text-shadow: 0 4px 24px rgba(0, 0, 0, .8), 0 0 2px #000; animation: pop 1.6s ease-out forwards; white-space: nowrap; }
+.banner.foul { color: #ff8a7a; }
+.banner.good { color: #ffd666; }
+@keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.7); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); } 30% { transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -62%) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .banner { animation: none; } }
+.victory h2 { font-size: 1.7rem; }
+.board { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.board li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, .05); }
+.board li.win { background: rgba(255, 214, 102, .18); font-weight: 700; }

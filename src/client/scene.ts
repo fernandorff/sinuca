@@ -122,21 +122,26 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   for (const z of [-(outerW / 2 - FRAME_W / 2), outerW / 2 - FRAME_W / 2]) box(outerL, RAIL_H + 0.01, FRAME_W, 0, (RAIL_H + 0.01) / 2, z, woodMat);
   for (const x of [-(outerL / 2 - FRAME_W / 2), outerL / 2 - FRAME_W / 2]) box(FRAME_W, RAIL_H + 0.01, outerW - 2 * FRAME_W, x, (RAIL_H + 0.01) / 2, 0, woodMat);
   box(outerL + 0.04, 0.6, outerW + 0.04, 0, -0.302, 0, woodMat);
-  // caçapas: buraco escuro com parede por dentro e um aro de couro por cima
-  const pocketMat = new THREE.MeshBasicMaterial({ color: '#030303', side: THREE.DoubleSide });
-  const leather = new THREE.MeshStandardMaterial({ color: '#24150c', roughness: 0.6 });
-  for (const p of pockets) {
-    const at = toScene(p.x, p.y);
-    const hole = new THREE.Mesh(new THREE.CircleGeometry(p.r, 32), pocketMat);
+  // caçapas: o buraco fica no pano verde, inteiro dentro da área do feltro (não em cima da madeira).
+  // O desenho fica um pouco para dentro do centro de captura da física; a bola cai dentro dele.
+  const pocketMat = new THREE.MeshBasicMaterial({ color: '#030303' });
+  const lipMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.45, depthWrite: false });
+  const edgeX = L / 2 + CUSHION_W;
+  const edgeZ = W / 2 + CUSHION_W;
+  pockets.forEach((p, i) => {
+    const sx = Math.sign(p.x - L / 2);
+    const sz = Math.sign(p.y - W / 2);
+    const x = i < 4 ? sx * (edgeX - p.r * 0.8) : 0;
+    const z = sz * (edgeZ - p.r * (i < 4 ? 0.8 : 1));
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(p.r, 40), pocketMat);
     hole.rotation.x = -Math.PI / 2;
-    hole.position.copy(at).setY(0.0015);
-    const wall = new THREE.Mesh(new THREE.CylinderGeometry(p.r, p.r, RAIL_H + 0.012, 32, 1, true), pocketMat);
-    wall.position.copy(at).setY((RAIL_H + 0.012) / 2);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(p.r + 0.003, 0.0055, 10, 40), leather);
-    rim.rotation.x = Math.PI / 2;
-    rim.position.copy(at).setY(RAIL_H + 0.009);
-    scene.add(hole, wall, rim);
-  }
+    hole.position.set(x, 0.0016, z);
+    // sombra na boca da caçapa
+    const lip = new THREE.Mesh(new THREE.RingGeometry(p.r, p.r * 1.22, 40), lipMat);
+    lip.rotation.x = -Math.PI / 2;
+    lip.position.set(x, 0.0012, z);
+    scene.add(hole, lip);
+  });
   // diamantes de madrepérola na moldura: 3 entre cada par de caçapas
   const pearl = new THREE.MeshStandardMaterial({ color: '#efe7d2', roughness: 0.25, metalness: 0.1 });
   const diamond = new THREE.CircleGeometry(0.009, 4);

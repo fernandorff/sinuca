@@ -7,7 +7,7 @@ import { createControls } from './controls.ts';
 import { connect } from './net.ts';
 import { createScene } from './scene.ts';
 import { createSound } from './sound.ts';
-import { askName, el, renderHud, renderLobby, screen, toast, type RoomInfo } from './ui.ts';
+import { askName, banner, el, renderHud, renderLobby, screen, toast, type RoomInfo } from './ui.ts';
 
 // localStorage pode falhar (aba anônima, dados bloqueados): cai para a memória
 const memory = new Map<string, string>();
@@ -85,6 +85,8 @@ function startRoom(id: string, name: string) {
   let online = false;
   let animating = false;
   let skip = false;
+  let wasMine = false;
+  let lastShotNo = -1;
   let queued: PublicRoom | null = null;
   let shown: BallPos[] = [];
   let status = 'Conectando…';
@@ -194,6 +196,12 @@ function startRoom(id: string, name: string) {
     else if (r.phase === 'over') status = foul;
     else if (myTurn(r)) status = `${foul}Sua vez${g!.ballInHand ? ' · bola na mão' : ''}. Mire, escolha a força e aperte Tacar (ou Espaço).`;
     else status = `${foul}Vez de ${turnName}.`;
+    // avisos grandes: falta na tacada que acabou de ser aplicada, ou a vez que acabou de virar sua
+    const newShot = lastShotNo !== -1 && r.shotNo !== lastShotNo;
+    if (r.phase === 'aiming' && newShot && g?.lastFoul) banner('Falta!', 'foul');
+    else if (myTurn(r) && !wasMine) banner('Sua vez!');
+    lastShotNo = r.shotNo;
+    wasMine = myTurn(r);
     if (myTurn(r) && g) {
       const cue = g.balls.find((b) => b.id === 0)!;
       controls.enable({ ballInHand: g.ballInHand, cue, cueValid: (p) => cueOk(g, p) });

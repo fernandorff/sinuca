@@ -183,7 +183,13 @@ export function renderHud(
         you.seat === null && el('p', { class: 'muted' }, 'Você está assistindo. Toque em "Sentar aqui" num lugar livre.'),
       ),
     room.phase === 'over' &&
-      el('div', { class: 'center-actions' }, el('h2', {}, winnerNames ? `${winnerNames} ${(winners?.length ?? 0) > 1 ? 'venceram' : 'venceu'}!` : 'Fim de jogo'), you.seat !== null && el('button', { type: 'button', class: 'primary', onclick: act.rematch }, 'Revanche')),
+      el(
+        'div',
+        { class: 'center-actions victory' },
+        el('h2', {}, winnerNames ? `${winnerNames} ${(winners?.length ?? 0) > 1 ? 'venceram' : 'venceu'}!` : 'Fim de jogo'),
+        g && 'scores' in g && board(room, g.scores, winners ?? []),
+        you.seat !== null && el('button', { type: 'button', class: 'primary', onclick: act.rematch }, 'Revanche'),
+      ),
     you.seat === null && !waiting && el('div', { class: 'badge' }, 'assistindo'),
   ].filter((c): c is HTMLElement => !!c));
 }
@@ -206,4 +212,18 @@ function tray(mode: Mode, g: GameState): HTMLElement | null {
       return el('span', { class: 'mini', style, title: label || 'bola' }, label);
     }),
   );
+}
+
+// aviso grande e curto no meio da tela ("Sua vez!", "Falta!", "Na caçapa!")
+export function banner(text: string, kind: 'turn' | 'foul' | 'good' = 'turn') {
+  document.querySelector('.banner')?.remove();
+  const b = el('div', { class: `banner ${kind}`, role: 'status' }, text);
+  document.body.append(b);
+  setTimeout(() => b.remove(), 1600);
+}
+
+// placar final, do maior para o menor
+function board(room: PublicRoom, scores: number[], winners: number[]): HTMLElement {
+  const rows = scores.map((pts, i) => ({ i, pts, name: room.seats[i]?.name ?? '—' })).sort((a, b) => b.pts - a.pts);
+  return el('ul', { class: 'board' }, ...rows.map((r) => el('li', { class: winners.includes(r.i) ? 'win' : '' }, el('span', {}, r.name), el('b', {}, String(r.pts)))));
 }
