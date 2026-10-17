@@ -181,7 +181,7 @@ function startRoom(id: string, name: string) {
     const foul = g?.lastFoul ? `Falta: ${g.lastFoul}. ` : '';
     if (r.phase === 'waiting') status = 'Esperando os jogadores.';
     else if (r.phase === 'over') status = foul;
-    else if (myTurn(r)) status = `${foul}Sua vez${g!.ballInHand ? ' · bola na mão' : ''}. Mire, escolha a força na barra e aperte Tacar.`;
+    else if (myTurn(r)) status = `${foul}Sua vez${g!.ballInHand ? ' · bola na mão' : ''}. Mire, escolha a força e aperte Tacar (ou Espaço).`;
     else status = `${foul}Vez de ${turnName}.`;
     if (myTurn(r) && g) {
       const cue = g.balls.find((b) => b.id === 0)!;

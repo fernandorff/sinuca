@@ -33,7 +33,7 @@ export function createControls(
       <div class="ctl-power" id="power" role="slider" tabindex="0" aria-label="Força" aria-valuemin="0" aria-valuemax="100">
         <div class="ctl-power-fill" id="power-fill"></div><span>Força<br><b id="power-pct"></b></span>
       </div>
-      <button id="shoot" type="button" class="primary">Tacar</button>
+      <button id="shoot" type="button" class="primary" title="Tacar (barra de espaço)">Tacar</button>
     </div>
     <div class="ctl-spin" id="spin" aria-label="Efeito na branca"><div class="ctl-spin-dot" id="spin-dot"></div></div>
     <div class="ctl-buttons">
@@ -145,6 +145,13 @@ export function createControls(
     dx /= n;
     dy /= n;
     cb.onShoot({ dx, dy, power, spinX, spinY }, cue);
+  });
+
+  // barra de espaço taca, como o botão (pedido do Fernando, 17/10/2026); não vale digitando num campo
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.repeat || !opts || (e.target as HTMLElement | null)?.closest('input, textarea')) return;
+    e.preventDefault();
+    shootBtn.click();
   });
 
   // efeito: arrastar o ponto dentro do círculo (para cima = seguida, para baixo = puxada)
