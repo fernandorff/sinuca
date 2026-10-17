@@ -28,7 +28,7 @@ export function createControls(
   let lastAimSent = 0;
 
   root.innerHTML = `
-    <div class="ctl-power" id="power" aria-label="Força: arraste para baixo e solte"><div class="ctl-power-fill" id="power-fill"></div><span>Força</span></div>
+    <div class="ctl-power" id="power" aria-label="Força: arraste para baixo e solte"><div class="ctl-power-fill" id="power-fill"></div><span>Força<br>puxe ↓</span></div>
     <div class="ctl-spin" id="spin" aria-label="Efeito na branca"><div class="ctl-spin-dot" id="spin-dot"></div></div>
     <div class="ctl-buttons">
       <button id="cam" type="button">Vista de mira</button>
@@ -53,12 +53,16 @@ export function createControls(
     }
   }
 
-  // mira: na vista de cima, aponta para onde o dedo está; na vista de mira, arrastar gira
+  // mira: na vista de cima, aponta para onde o dedo está.
+  // Na vista de mira, arrastar para os lados gira e arrastar para baixo puxa o taco; soltar taca.
   let dragX: number | null = null;
+  let dragStartY = 0;
   canvas.addEventListener('pointerdown', (e) => {
     if (!opts) return;
     canvas.setPointerCapture(e.pointerId);
     dragX = e.clientX;
+    dragStartY = e.clientY;
+    pull = 0;
     pointerAt(e);
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -66,11 +70,17 @@ export function createControls(
     if (camMode === 'aim' && !placing) {
       angle += (e.clientX - dragX) * 0.003;
       dragX = e.clientX;
-      if (camMode === 'aim') scene.setCamera('aim', angle);
+      // os primeiros 24 px não puxam, para mirar sem tacar sem querer
+      setPull((e.clientY - dragStartY - 24) / 220);
+      scene.setCamera('aim', angle);
       sendAim();
     } else pointerAt(e);
   });
-  canvas.addEventListener('pointerup', () => (dragX = null));
+  canvas.addEventListener('pointerup', () => {
+    if (dragX === null) return;
+    dragX = null;
+    if (camMode === 'aim' && !placing) release();
+  });
 
   function pointerAt(e: PointerEvent) {
     const p = scene.pickTable(e.clientX, e.clientY);
@@ -88,9 +98,14 @@ export function createControls(
     sendAim();
   }
 
-  // força: arrastar para baixo carrega, soltar taca
+  // força: arrastar a barra para baixo carrega, soltar taca
   let pullStart: number | null = null;
   let pull = 0;
+  function setPull(p: number) {
+    pull = Math.min(1, Math.max(0, p));
+    fill.style.height = `${pull * 100}%`;
+    scene.setCue(true, angle, pull);
+  }
   power.addEventListener('pointerdown', (e) => {
     if (!opts) return;
     power.setPointerCapture(e.pointerId);
@@ -99,16 +114,18 @@ export function createControls(
   });
   power.addEventListener('pointermove', (e) => {
     if (pullStart === null) return;
-    pull = Math.min(1, Math.max(0, (e.clientY - pullStart) / (power.clientHeight * 0.9)));
-    fill.style.height = `${pull * 100}%`;
-    scene.setCue(true, angle, pull);
+    setPull((e.clientY - pullStart) / (power.clientHeight * 0.9));
   });
   power.addEventListener('pointerup', () => {
-    if (pullStart === null || !opts) return;
+    if (pullStart === null) return;
     pullStart = null;
+    release();
+  });
+
+  function release() {
     fill.style.height = '0';
-    scene.setCue(true, angle, 0);
-    if (pull < 0.03) return;
+    scene.setCue(!!opts, angle, 0);
+    if (!opts || pull < 0.03) return;
     const cue = placed ?? undefined;
     if (cue && !opts.cueValid(cue)) return;
     // seno e cosseno só aqui, uma vez: a física recebe a direção pronta
@@ -118,7 +135,8 @@ export function createControls(
     dx /= n;
     dy /= n;
     cb.onShoot({ dx, dy, power: pull, spinX, spinY }, cue);
-  });
+    pull = 0;
+  }
 
   // efeito: arrastar o ponto dentro do círculo (para cima = seguida, para baixo = puxada)
   function setSpin(e: PointerEvent) {

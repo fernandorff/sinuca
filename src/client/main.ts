@@ -160,7 +160,7 @@ function startRoom(id: string, name: string) {
     const foul = g?.lastFoul ? `Falta: ${g.lastFoul}. ` : '';
     if (r.phase === 'waiting') status = 'Esperando os jogadores.';
     else if (r.phase === 'over') status = foul;
-    else if (myTurn(r)) status = `${foul}Sua vez${g!.ballInHand ? ' · bola na mão' : ''}.`;
+    else if (myTurn(r)) status = `${foul}Sua vez${g!.ballInHand ? ' · bola na mão' : ''}. Mire e arraste a barra Força para baixo.`;
     else status = `${foul}Vez de ${turnName}.`;
     if (myTurn(r) && g) {
       const cue = g.balls.find((b) => b.id === 0)!;
