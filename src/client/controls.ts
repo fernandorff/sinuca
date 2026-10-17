@@ -57,7 +57,7 @@ export function createControls(
   function sendAim() {
     showCue();
     const now = performance.now();
-    if (now - lastAimSent > 100) {
+    if (now - lastAimSent > 50) {
       lastAimSent = now;
       cb.onAim(angle);
     }
@@ -206,8 +206,26 @@ export function createControls(
     moveBtn.textContent = placing ? 'Pronto' : 'Mover branca';
   });
 
+  let remoteTarget = 0;
+  let remoteShown: number | null = null;
+  let remoteAnimating = false;
+  function stepRemote() {
+    if (opts || remoteShown === null) {
+      remoteAnimating = false;
+      return;
+    }
+    // menor caminho entre os dois ângulos (passar de 359° para 1° sem dar a volta)
+    const diff = Math.atan2(Math.sin(remoteTarget - remoteShown), Math.cos(remoteTarget - remoteShown));
+    remoteShown += diff * 0.35;
+    scene.setCue(true, remoteShown, 0);
+    if (camMode === 'aim') scene.setCamera('aim', remoteShown);
+    if (Math.abs(diff) > 0.0005) requestAnimationFrame(stepRemote);
+    else remoteAnimating = false;
+  }
+
   return {
     enable(next: ControlOpts | null) {
+      if (next) remoteShown = null;
       opts = next;
       placing = false;
       placed = null;
@@ -218,11 +236,16 @@ export function createControls(
       showCue();
       scene.setCamera(camMode, angle);
     },
-    // espectadores veem a mira de quem está na vez
+    // espectadores veem a mira de quem está na vez: as posições chegam ~20 por segundo e o taco desliza
+    // entre elas a cada quadro, em vez de pular (senão a jogada do outro parece rodar a poucos FPS)
     showAim(a: number) {
       if (opts) return;
-      scene.setCue(true, a, 0);
-      if (camMode === 'aim') scene.setCamera('aim', a);
+      remoteTarget = a;
+      if (remoteShown === null) remoteShown = a;
+      if (!remoteAnimating) {
+        remoteAnimating = true;
+        requestAnimationFrame(stepRemote);
+      }
     },
     get camMode() {
       return camMode;
