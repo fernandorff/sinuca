@@ -1,10 +1,12 @@
 // Máquina de estados de uma mesa: pura, sem Cloudflare. O Durable Object só entrega mensagens e grava o estado.
-import type { SimEvent } from './physics.ts';
+import type { Shot, SimEvent } from './physics.ts';
 import type { ClientMsg, ErrorCode, ServerMsg } from './protocol.ts';
 import { applyShot, newGame, type EightState } from './rules/eightball.ts';
 import { HEAD_X, L, R, W, type BallPos } from './table.ts';
 
 export const FALLBACK_MS = 10_000;
+export const EMPTY_MS = 10 * 60 * 1000;
+export const SWEEP_MS = 30_000;
 
 export type Seat = { playerId: string; name: string; connected: boolean };
 export type RoomState = {
@@ -21,6 +23,9 @@ export type RoomState = {
     by: number;
     shooter: string;
     shotAt: number;
+    // guardados para reenviar a tacada a quem reconectar no meio dela
+    shot: Shot;
+    balls: BallPos[];
     fallback: { final: BallPos[]; events: SimEvent[] } | null;
   } | null;
 };
@@ -94,6 +99,29 @@ function finish(s: RoomState, final: BallPos[], events: SimEvent[]): RoomState {
   return { ...s, game, shotNo: s.shotNo + 1, phase: game.winner !== null ? 'over' : 'aiming', pending: null };
 }
 
+function hello(s: RoomState, playerId: string, name: string): { state: RoomState; out: Out[] } {
+  const changed = (next: RoomState) => ({ state: next, out: broadcast(next) });
+  const i = seatOf(s, playerId);
+  if (i >= 0) return changed({ ...s, seats: s.seats.map((x, j) => (j === i ? { playerId, name, connected: true } : x)) });
+  const spectators = s.spectators.filter((x) => x.playerId !== playerId);
+  const free = s.seats.indexOf(null);
+  if (s.phase === 'waiting' && free >= 0) {
+    return changed({ ...s, seats: s.seats.map((x, j) => (j === free ? { playerId, name, connected: true } : x)), spectators });
+  }
+  return changed({ ...s, spectators: [...spectators, { playerId, name }] });
+}
+
+// Um Durable Object tem um alarme só: o prazo mais próximo entre o resultado reserva de uma tacada,
+// a limpeza da mesa vazia e a varredura de conexões mortas. Prazo de tacada sem reserva não arma nada
+// (um resultado atrasado já vale ao chegar), senão o alarme dispararia sem parar.
+export function nextAlarm(s: RoomState | null, emptySince: number | undefined, live: number, now: number): number | null {
+  const deadlines: number[] = [];
+  if (s?.pending?.fallback) deadlines.push(s.pending.shotAt + FALLBACK_MS);
+  if (live === 0 && emptySince !== undefined) deadlines.push(emptySince + EMPTY_MS);
+  if (live > 0) deadlines.push(now + SWEEP_MS);
+  return deadlines.length ? Math.min(...deadlines) : null;
+}
+
 export function reduce(s: RoomState | null, input: Input, now: number): { state: RoomState | null; out: Out[] } {
   if (s === null) {
     return input.kind === 'msg' && input.msg.t === 'hello' ? fail(null, input.playerId, 'not_found') : { state: null, out: [] };
@@ -116,18 +144,11 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
   const msg = input.msg;
   switch (msg.t) {
     case 'hello': {
-      const i = seatOf(s, playerId);
-      if (i >= 0) {
-        const seats = s.seats.map((x, j) => (j === i ? { playerId, name: msg.name, connected: true } : x));
-        return changed({ ...s, seats });
-      }
-      const spectators = s.spectators.filter((x) => x.playerId !== playerId);
-      const free = s.seats.indexOf(null);
-      if (s.phase === 'waiting' && free >= 0) {
-        const seats = s.seats.map((x, j) => (j === free ? { playerId, name: msg.name, connected: true } : x));
-        return changed({ ...s, seats, spectators });
-      }
-      return changed({ ...s, spectators: [...spectators, { playerId, name: msg.name }] });
+      const r = hello(s, playerId, msg.name);
+      // chegou no meio de uma tacada: recebe a tacada também, para simular e mandar o resultado
+      const p = r.state.pending;
+      if (p) r.out.push({ to: playerId, msg: { t: 'shot', shotNo: p.shotNo, by: p.by, shot: p.shot, balls: p.balls } });
+      return r;
     }
 
     case 'sit': {
@@ -135,7 +156,8 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       const i = seatOf(s, playerId);
       const me = i >= 0 ? s.seats[i]! : s.spectators.find((x) => x.playerId === playerId);
       if (!me) return fail(s, playerId, 'bad_msg');
-      if (msg.seat !== null && s.seats[msg.seat] !== null) return fail(s, playerId, 'bad_msg');
+      // antes da partida, um assento de quem caiu pode ser ocupado por outro
+      if (msg.seat !== null && s.seats[msg.seat]?.connected) return fail(s, playerId, 'bad_msg');
       const seats = s.seats.map((x, j) => (j === i ? null : x));
       let spectators = s.spectators.filter((x) => x.playerId !== playerId);
       if (msg.seat === null) spectators = [...spectators, { playerId, name: me.name }];
@@ -144,7 +166,8 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
     }
 
     case 'start': {
-      const sitting = s.seats.filter((x): x is Seat => x !== null);
+      // quem caiu antes de começar fica de fora (ao voltar, entra como espectador)
+      const sitting = s.seats.filter((x): x is Seat => x !== null && x.connected);
       if (s.phase !== 'waiting' || (sitting.length !== 2 && sitting.length !== 4)) return fail(s, playerId, 'bad_start');
       const seats = [0, 1, 2, 3].map((j) => sitting[j] ?? null);
       return changed({ ...s, seats, phase: 'aiming', game: newGame(sitting.length as 2 | 4, 0), pending: null });
@@ -168,7 +191,7 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
         const { x, y } = msg.cue;
         game = { ...game, balls: game.balls.map((b) => (b.id === 0 ? { ...b, x, y, pocketed: false } : b)) };
       }
-      const pending = { shotNo: s.shotNo, by: game.turn, shooter: playerId, shotAt: now, fallback: null };
+      const pending = { shotNo: s.shotNo, by: game.turn, shooter: playerId, shotAt: now, shot: msg.shot, balls: game.balls, fallback: null };
       const next: RoomState = { ...s, game, phase: 'rolling', pending };
       return {
         state: next,

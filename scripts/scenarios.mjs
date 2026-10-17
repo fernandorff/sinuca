@@ -111,5 +111,30 @@ if (!st.room.seats[0].connected) fail('seat 0 not connected after reconnect');
 console.log('ok  reconnect regains seat');
 
 for (const p of [back, s1, s2, s3, e]) p.ws.close();
+
+// ninguém recebeu a tacada: quem tacou some sem mandar resultado e o outro estava fora do ar
+const res2 = await fetch(base + '/api/rooms', { method: 'POST', body: JSON.stringify({ mode: 'eightball' }) });
+const id2 = (await res2.json()).id;
+const x = client(id2, 'Xavi');
+const y = client(id2, 'Yara');
+await x.hello();
+await x.waitFor((m) => m.t === 'state' && m.you.seat === 0, 'Xavi seated');
+await y.hello();
+await y.waitFor((m) => m.t === 'state' && m.you.seat === 1, 'Yara seated');
+x.send({ t: 'start' });
+await y.waitFor((m) => m.t === 'state' && m.room.phase === 'aiming', 'aiming (2)');
+y.ws.close();
+await x.waitFor((m) => m.t === 'state' && m.room.seats[1] && !m.room.seats[1].connected, 'Yara offline');
+x.send({ t: 'shot', shotNo: 0, shot: SHOT });
+await x.waitFor((m) => m.t === 'shot' && m.shotNo === 0, 'shot echo (2)');
+x.ws.close();
+const t1 = Date.now();
+const y2 = client(id2, 'Yara');
+await y2.hello();
+const resent = await y2.waitFor((m) => m.t === 'shot' && m.shotNo === 0, 'shot resent on reconnect');
+y2.send({ t: 'result', shotNo: 0, ...miss(resent.balls, 1) });
+await y2.waitFor((m) => m.t === 'state' && m.room.shotNo === 1, 'table moves on', 20000);
+console.log(`ok  shot resent on reconnect; table moved on after ${((Date.now() - t1) / 1000).toFixed(1)} s`);
+y2.ws.close();
 console.log('SCENARIOS OK', id);
 process.exit(0);

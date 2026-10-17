@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { ClientMsg, ServerMsg } from '../src/shared/protocol.ts';
-import { createRoom, reduce, type Out, type RoomState } from '../src/shared/room.ts';
+import { EMPTY_MS, FALLBACK_MS, SWEEP_MS, createRoom, nextAlarm, reduce, type Out, type RoomState } from '../src/shared/room.ts';
 import { simulate, type Shot } from '../src/shared/physics.ts';
 import { R } from '../src/shared/table.ts';
 
@@ -153,4 +153,41 @@ test('rematch after over', () => {
   expect(s.phase).toBe('aiming');
   expect(s.game!.winner).toBeNull();
   expect(s.game!.turn).toBe(1);
+});
+
+test('hello during rolling resends the shot to that player', () => {
+  const { state } = breakShot(started('a', 'b'), 'a', 0);
+  const r = run(state, 'b', { t: 'hello', playerId: pid('b'), name: 'b' }, 3000);
+  const shot = r.out.find((o) => o.to === pid('b') && o.msg.t === 'shot');
+  expect(shot?.msg).toMatchObject({ t: 'shot', shotNo: 0, by: 0 });
+  expect((shot!.msg as Extract<ServerMsg, { t: 'shot' }>).balls).toEqual(state.game!.balls);
+});
+
+test('start counts only connected seats', () => {
+  let s = room('a', 'b', 'c');
+  s = reduce(s, { kind: 'disconnect', playerId: pid('c') }, 0).state!;
+  s = run(s, 'a', { t: 'start' }).state!;
+  expect(s.phase).toBe('aiming');
+  expect(s.seats.map((x) => x?.name ?? null)).toEqual(['a', 'b', null, null]);
+});
+
+test('sit can take a disconnected seat while waiting', () => {
+  let s = room('a', 'b', 'c', 'd', 'e');
+  s = reduce(s, { kind: 'disconnect', playerId: pid('d') }, 0).state!;
+  s = run(s, 'e', { t: 'sit', seat: 3 }).state!;
+  expect(s.seats[3]).toMatchObject({ name: 'e', connected: true });
+  expect(s.spectators).toEqual([]);
+});
+
+test('nextAlarm: a pending shot without fallback schedules nothing', () => {
+  const { state } = breakShot(started('a', 'b'), 'a', 0);
+  expect(nextAlarm(state, undefined, 0, 20000)).toBeNull();
+});
+
+test('nextAlarm: fallback, empty room and zombie sweep', () => {
+  const { state } = breakShot(started('a', 'b'), 'a', 1000);
+  const withFallback = run(state, 'b', breakShot(started('a', 'b'), 'a', 1000).result, 2000).state!;
+  expect(nextAlarm(withFallback, undefined, 0, 2000)).toBe(1000 + FALLBACK_MS);
+  expect(nextAlarm(started('a', 'b'), 5000, 0, 6000)).toBe(5000 + EMPTY_MS);
+  expect(nextAlarm(started('a', 'b'), undefined, 2, 6000)).toBe(6000 + SWEEP_MS);
 });
