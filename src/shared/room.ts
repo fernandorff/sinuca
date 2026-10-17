@@ -2,6 +2,7 @@
 import type { Shot, SimEvent } from './physics.ts';
 import type { ClientMsg, ErrorCode, ServerMsg } from './protocol.ts';
 import { MAX_SEATS, MODES, applyFor, newGameFor, nextBreaker, winnersOf, type GameState, type Mode } from './rules/index.ts';
+import { describeShot } from './log.ts';
 import { HEAD_X, inD, type BallPos } from './table.ts';
 
 export const FALLBACK_MS = 10_000;
@@ -18,6 +19,8 @@ export type RoomState = {
   phase: 'waiting' | 'aiming' | 'rolling' | 'over';
   game: GameState | null;
   shotNo: number;
+  // o que aconteceu em cada jogada, as mais novas no fim (só as últimas LOG_MAX)
+  log: string[];
   pending: {
     shotNo: number;
     by: number;
@@ -50,7 +53,7 @@ const ERRORS: Record<ErrorCode, string> = {
 };
 
 export function createRoom(id: string, now: number, mode: Mode = 'eightball'): RoomState {
-  return { id, mode, createdAt: now, seats: Array(MAX_SEATS).fill(null), spectators: [], phase: 'waiting', game: null, shotNo: 0, pending: null };
+  return { id, mode, createdAt: now, seats: Array(MAX_SEATS).fill(null), spectators: [], phase: 'waiting', game: null, shotNo: 0, log: [], pending: null };
 }
 
 export function publicRoom(s: RoomState): PublicRoom {
@@ -98,9 +101,14 @@ export function cueOk(game: GameState, cue: { x: number; y: number }): boolean {
   return game.balls.every((b) => b.id === 0 || b.pocketed || (b.x - cue.x) * (b.x - cue.x) + (b.y - cue.y) * (b.y - cue.y) >= 4 * R * R);
 }
 
+const LOG_MAX = 40;
+// mesas salvas antes do log não têm o campo
+const withLog = (s: RoomState, line: string): RoomState => ({ ...s, log: [...(s.log ?? []), line].slice(-LOG_MAX) });
+
 function finish(s: RoomState, final: BallPos[], events: SimEvent[]): RoomState {
   const game = applyFor(s.game!, final, events);
-  return { ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null };
+  const line = describeShot(s.game!, game, events, s.seats.map((x) => x?.name ?? null));
+  return withLog({ ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null }, line);
 }
 
 function hello(s: RoomState, playerId: string, name: string): { state: RoomState; out: Out[] } {
@@ -174,12 +182,12 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       const sitting = s.seats.filter((x): x is Seat => x !== null && x.connected);
       if (s.phase !== 'waiting' || !MODES[s.mode].seats.includes(sitting.length)) return fail(s, playerId, 'bad_start');
       const seats = Array.from({ length: MAX_SEATS }, (_, j) => sitting[j] ?? null);
-      return changed({ ...s, seats, phase: 'aiming', game: newGameFor(s.mode, sitting.length, 0), pending: null });
+      return changed(withLog({ ...s, seats, phase: 'aiming', game: newGameFor(s.mode, sitting.length, 0), pending: null }, `Partida começou com ${sitting.length} ${sitting.length > 1 ? 'jogadores' : 'jogador'}`));
     }
 
     case 'rematch': {
       if (s.phase !== 'over' || !s.game) return fail(s, playerId, 'bad_msg');
-      return changed({ ...s, phase: 'aiming', game: newGameFor(s.mode, s.game.seats, nextBreaker(s.game)), shotNo: s.shotNo + 1, pending: null });
+      return changed(withLog({ ...s, phase: 'aiming', game: newGameFor(s.mode, s.game.seats, nextBreaker(s.game)), shotNo: s.shotNo + 1, pending: null }, 'Revanche'));
     }
 
     // nova partida (pedido do Fernando, 17/10/2026): qualquer um sentado volta a mesa para a espera; o placar zera,
@@ -193,7 +201,8 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
         const v = waiting.shift()!;
         seats[j] = { playerId: v.playerId, name: v.name, connected: true };
       }
-      return changed({ ...s, seats, spectators: waiting, phase: 'waiting', game: null, pending: null, shotNo: s.shotNo + 1 });
+      const who = s.seats[seatOf(s, playerId)]!.name;
+      return changed(withLog({ ...s, seats, spectators: waiting, phase: 'waiting', game: null, pending: null, shotNo: s.shotNo + 1 }, `${who} abriu uma nova partida`));
     }
 
     // mesa livre: qualquer um sentado arruma as bolas de novo

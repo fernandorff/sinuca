@@ -2,6 +2,7 @@
 import { MAX_SEATS, MODES, winnersOf, type GameState, type Mode } from '../shared/rules/index.ts';
 import { ballOn } from '../shared/rules/sinuca.ts';
 import { target, valueOf } from '../shared/rules/snooker.ts';
+import { COLOR_NAME } from '../shared/log.ts';
 import type { PublicRoom } from '../shared/room.ts';
 import { ballLook } from './look.ts';
 import { TRACKS, type TrackId } from './music.ts';
@@ -119,7 +120,14 @@ export function toast(msg: string) {
 }
 
 const GROUP = { solids: 'lisas', stripes: 'listradas' };
-const COLOR_NAME: Record<number, string> = { 1: 'vermelha', 2: 'amarela', 3: 'verde', 4: 'marrom', 5: 'azul', 6: 'rosa', 7: 'preta' };
+// painel de jogadas aberto ou fechado: preferência de cada um, guardada no navegador
+let logOpen = (() => {
+  try {
+    return localStorage.getItem('sinuca:log') === '1';
+  } catch {
+    return false;
+  }
+})();
 
 // o que o jogador da vez precisa saber da regra, numa linha
 export function targetText(g: GameState): string {
@@ -187,6 +195,22 @@ export function renderHud(
       el('button', { type: 'button', class: 'link', onclick: act.mute, 'aria-pressed': String(!muted) }, muted ? 'Som: desligado' : 'Som: ligado'),
       el('button', { type: 'button', class: 'link', onclick: () => showRules(room.mode) }, 'Regras'),
       el('button', { type: 'button', class: 'link', onclick: () => showRules(room.mode, true) }, 'Controles'),
+      el(
+        'button',
+        {
+          type: 'button',
+          class: 'link',
+          'aria-pressed': String(logOpen),
+          onclick: () => {
+            logOpen = !logOpen;
+            try {
+              localStorage.setItem('sinuca:log', logOpen ? '1' : '0');
+            } catch {}
+            renderHud(root, room, you, online, status, muted, animating, music, act);
+          },
+        },
+        'Jogadas',
+      ),
       !waiting && you.seat !== null && el('button', { type: 'button', class: 'link', onclick: act.reset, title: 'Volta para a espera: o placar zera e entra quem quiser' }, 'Nova partida'),
       el(
         'label',
@@ -200,6 +224,12 @@ export function renderHud(
     g && tray(room.mode, g),
     animating && el('button', { type: 'button', class: 'skip', onclick: act.skip }, 'Pular ⏭'),
     el('div', { class: 'status' }, status),
+    logOpen &&
+      el(
+        'ol',
+        { class: 'log', 'aria-label': 'Jogadas' },
+        ...((room.log ?? []).length ? [...room.log].reverse().map((t) => el('li', {}, t)) : [el('li', { class: 'muted' }, 'Nenhuma jogada ainda.')]),
+      ),
     rule && el('div', { class: 'status rule' }, rule),
     room.mode === 'free' && room.phase === 'aiming' && you.seat !== null && el('button', { type: 'button', class: 'rerack', onclick: act.rerack }, 'Arrumar mesa'),
     waiting &&

@@ -298,3 +298,12 @@ test('reset: only someone seated, and not while already waiting', () => {
   expect(errorsTo(run(s, 'c', { t: 'reset' }).out, 'c')).toEqual(['bad_msg']);
   expect(errorsTo(run(room('a'), 'a', { t: 'reset' }).out, 'a')).toEqual(['bad_msg']);
 });
+
+test('log: start, each shot, and new game go into the room log', () => {
+  const { state, result } = breakShot(started('a', 'b'), 'a');
+  let s = run(state, 'a', result, 500).state!;
+  expect(s.log[0]).toBe('Partida começou com 2 jogadores');
+  expect(s.log[1]).toMatch(/^a: /);
+  s = run(s, 'a', { t: 'reset' }).state!;
+  expect(s.log.at(-1)).toBe('a abriu uma nova partida');
+});
