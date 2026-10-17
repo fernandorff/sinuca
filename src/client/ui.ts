@@ -150,18 +150,30 @@ export function targetText(g: GameState): string {
 export function renderHud(
   root: HTMLElement,
   room: PublicRoom,
-  you: { seat: number | null },
+  you: { seat: number | null; voted: number[] },
   online: boolean,
   status: string,
   muted: boolean,
   animating: boolean,
   music: TrackId,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void },
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
   const teams = room.mode === 'eightball';
   const seatCount = g ? g.seats : MAX_SEATS;
+  // votar para expulsar: quem está sentado vê o botão nos outros, com votos/necessários
+  const kickButton = (i: number, name: string) => {
+    if (you.seat === null || i === you.seat) return null;
+    const votes = room.kickVotes?.[i] ?? 0;
+    const need = Math.floor(room.seats.filter((x, j) => x?.connected && j !== i).length / 2) + 1;
+    const mine = you.voted.includes(i);
+    return el(
+      'button',
+      { type: 'button', class: `kick${mine ? ' on' : ''}`, title: mine ? 'Tirar meu voto' : 'Votar para expulsar', 'aria-pressed': String(mine), onclick: () => act.kick(i, name, !mine && votes + 1 >= need) },
+      `✕ ${votes}/${need}`,
+    );
+  };
   const seats = room.seats.slice(0, seatCount).map((s, i) => {
     const team = teams ? ` team-${i % 2}` : '';
     const group = g?.mode === 'eightball' ? g.groups[i % 2] : null;
@@ -177,6 +189,7 @@ export function renderHud(
       el('b', {}, s.name),
       group && el('small', {}, `${GROUP[group]} · faltam ${left(g!, group)}`),
       score !== null && el('span', { class: 'score' }, String(score)),
+      kickButton(i, s.name),
     );
   });
   const seated = room.seats.filter(Boolean).length;

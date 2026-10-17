@@ -10,15 +10,16 @@ export type ClientMsg =
   | { t: 'rematch' }
   | { t: 'rerack' }
   | { t: 'reset' }
+  | { t: 'kick'; seat: number }
   | { t: 'sit'; seat: number | null }
   | { t: 'aim'; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'shot'; shotNo: number; shot: Shot; cue?: { x: number; y: number } }
   | { t: 'result'; shotNo: number; final: BallPos[]; events: SimEvent[] };
 
-export type ErrorCode = 'not_found' | 'other_tab' | 'not_your_turn' | 'bad_cue' | 'bad_start' | 'bad_msg';
+export type ErrorCode = 'not_found' | 'other_tab' | 'not_your_turn' | 'bad_cue' | 'bad_start' | 'bad_msg' | 'kicked';
 
 export type ServerMsg =
-  | { t: 'state'; room: PublicRoom; you: { playerId: string; seat: number | null } }
+  | { t: 'state'; room: PublicRoom; you: { playerId: string; seat: number | null; voted: number[] } }
   | { t: 'shot'; shotNo: number; by: number; shot: Shot; balls: BallPos[] }
   | { t: 'aim'; seat: number; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'error'; code: ErrorCode; msg: string };
@@ -87,6 +88,8 @@ export function parseClientMessage(raw: string): ClientMsg | null {
     case 'rerack':
     case 'reset':
       return { t: m.t };
+    case 'kick':
+      return int(m.seat, 0, MAX_SEATS - 1) ? { t: 'kick', seat: m.seat } : null;
     case 'sit':
       return m.seat === null || int(m.seat, 0, MAX_SEATS - 1) ? { t: 'sit', seat: m.seat as number | null } : null;
     case 'aim': {

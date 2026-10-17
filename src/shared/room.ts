@@ -21,6 +21,9 @@ export type RoomState = {
   shotNo: number;
   // o que aconteceu em cada jogada, as mais novas no fim (só as últimas LOG_MAX)
   log: string[];
+  // voto para expulsar (pedido do Fernando, 17/10/2026): quem votou em quem, e quem já foi expulso desta mesa
+  kick?: { target: string; voters: string[] }[];
+  kicked?: string[];
   pending: {
     shotNo: number;
     by: number;
@@ -32,8 +35,10 @@ export type RoomState = {
     fallback: { final: BallPos[]; events: SimEvent[] } | null;
   } | null;
 };
-export type PublicRoom = Omit<RoomState, 'pending' | 'seats' | 'spectators'> & {
+export type PublicRoom = Omit<RoomState, 'pending' | 'seats' | 'spectators' | 'kick' | 'kicked'> & {
   seats: ({ name: string; connected: boolean } | null)[];
+  // votos válidos para expulsar cada assento
+  kickVotes: number[];
   spectators: { name: string }[];
   rolling: boolean;
 };
@@ -50,16 +55,24 @@ const ERRORS: Record<ErrorCode, string> = {
   bad_cue: 'A branca não pode ficar aí.',
   bad_start: 'Esse modo não começa com esse número de jogadores sentados.',
   bad_msg: 'Mensagem inválida.',
+  kicked: 'Você foi expulso desta mesa por votação.',
 };
 
 export function createRoom(id: string, now: number, mode: Mode = 'eightball'): RoomState {
   return { id, mode, createdAt: now, seats: Array(MAX_SEATS).fill(null), spectators: [], phase: 'waiting', game: null, shotNo: 0, log: [], pending: null };
 }
 
+// só vale o voto de quem está sentado e conectado, e nunca em si mesmo
+const votersOf = (s: RoomState, target: string) =>
+  (s.kick ?? []).find((k) => k.target === target)?.voters.filter((v) => v !== target && s.seats.some((x) => x?.connected && x.playerId === v)) ?? [];
+// mais da metade dos outros jogadores sentados e conectados
+const kickNeed = (s: RoomState, target: string) => Math.floor(s.seats.filter((x) => x?.connected && x.playerId !== target).length / 2) + 1;
+
 export function publicRoom(s: RoomState): PublicRoom {
-  const { pending, seats, spectators, ...rest } = s;
+  const { pending, seats, spectators, kick, kicked, ...rest } = s;
   return {
     ...rest,
+    kickVotes: seats.map((x) => (x ? votersOf(s, x.playerId).length : 0)),
     seats: seats.map((x) => (x ? { name: x.name, connected: x.connected } : null)),
     spectators: spectators.map((x) => ({ name: x.name })),
     rolling: pending !== null,
@@ -71,7 +84,8 @@ function broadcast(s: RoomState): Out[] {
   const room = publicRoom(s);
   const seated = s.seats.flatMap((x, i) => (x?.connected ? [{ playerId: x.playerId, seat: i as number | null }] : []));
   const watching = s.spectators.map((x) => ({ playerId: x.playerId, seat: null }));
-  return [...seated, ...watching].map((you) => ({ to: you.playerId, msg: { t: 'state', room, you } }));
+  const voted = (id: string) => s.seats.flatMap((x, i) => (x && (s.kick ?? []).some((k) => k.target === x.playerId && k.voters.includes(id)) ? [i] : []));
+  return [...seated, ...watching].map((you) => ({ to: you.playerId, msg: { t: 'state', room, you: { ...you, voted: voted(you.playerId) } } }));
 }
 
 const fail = (s: RoomState | null, playerId: string, code: ErrorCode) => ({
@@ -156,6 +170,7 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
   const msg = input.msg;
   switch (msg.t) {
     case 'hello': {
+      if (s.kicked?.includes(playerId)) return fail(s, playerId, 'kicked');
       const r = hello(s, playerId, msg.name);
       // chegou no meio de uma tacada: recebe a tacada também, para simular e mandar o resultado
       const p = r.state.pending;
@@ -203,6 +218,25 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       }
       const who = s.seats[seatOf(s, playerId)]!.name;
       return changed(withLog({ ...s, seats, spectators: waiting, phase: 'waiting', game: null, pending: null, shotNo: s.shotNo + 1 }, `${who} abriu uma nova partida`));
+    }
+
+    // voto para expulsar: clicar de novo tira o voto; com mais da metade dos outros, o jogador sai e não volta
+    case 'kick': {
+      const me = seatOf(s, playerId);
+      const target = s.seats[msg.seat];
+      if (me < 0 || !s.seats[me]!.connected || !target || msg.seat === me) return fail(s, playerId, 'bad_msg');
+      const others = (s.kick ?? []).filter((k) => k.target !== target.playerId);
+      const prev = (s.kick ?? []).find((k) => k.target === target.playerId)?.voters ?? [];
+      const voters = prev.includes(playerId) ? prev.filter((v) => v !== playerId) : [...prev, playerId];
+      const next: RoomState = { ...s, kick: [...others, { target: target.playerId, voters }] };
+      if (votersOf(next, target.playerId).length < kickNeed(next, target.playerId)) return changed(next);
+      const out = withLog(
+        { ...next, seats: next.seats.map((x, j) => (j === msg.seat ? null : x)), kick: others, kicked: [...(s.kicked ?? []), target.playerId] },
+        `${target.name} foi expulso por votação`,
+      );
+      const r = changed(out);
+      r.out.push({ to: target.playerId, msg: { t: 'error', code: 'kicked', msg: ERRORS.kicked } });
+      return r;
     }
 
     // mesa livre: qualquer um sentado arruma as bolas de novo

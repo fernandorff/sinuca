@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { ClientMsg, ServerMsg } from '../src/shared/protocol.ts';
-import { EMPTY_MS, FALLBACK_MS, SWEEP_MS, createRoom, nextAlarm, reduce, type Out, type RoomState } from '../src/shared/room.ts';
+import { EMPTY_MS, FALLBACK_MS, SWEEP_MS, createRoom, nextAlarm, publicRoom, reduce, type Out, type RoomState } from '../src/shared/room.ts';
 import { winnersOf } from '../src/shared/rules/index.ts';
 import { simulate, type Shot } from '../src/shared/physics.ts';
 import { R } from '../src/shared/table.ts';
@@ -306,4 +306,33 @@ test('log: start, each shot, and new game go into the room log', () => {
   expect(s.log[1]).toMatch(/^a: /);
   s = run(s, 'a', { t: 'reset' }).state!;
   expect(s.log.at(-1)).toBe('a abriu uma nova partida');
+});
+
+test('vote kick: more than half of the others; the kicked one cannot come back', () => {
+  let s = room('a', 'b', 'c', 'd');
+  // 3 outros votam sobre 'd': precisa de 2
+  let r = run(s, 'a', { t: 'kick', seat: 3 });
+  s = r.state!;
+  expect(s.seats[3]?.name).toBe('d');
+  expect(publicRoom(s).kickVotes[3]).toBe(1);
+  // clicar de novo tira o voto
+  s = run(s, 'a', { t: 'kick', seat: 3 }).state!;
+  expect(publicRoom(s).kickVotes[3]).toBe(0);
+  s = run(s, 'a', { t: 'kick', seat: 3 }).state!;
+  r = run(s, 'b', { t: 'kick', seat: 3 });
+  s = r.state!;
+  expect(s.seats[3]).toBeNull();
+  expect(errorsTo(r.out, 'd')).toEqual(['kicked']);
+  expect(s.log.at(-1)).toBe('d foi expulso por votação');
+  expect(errorsTo(run(s, 'd', { t: 'hello', playerId: pid('d'), name: 'd' }).out, 'd')).toEqual(['kicked']);
+});
+
+test('vote kick: only seated players vote, not on themselves; 2 players → 1 vote is enough', () => {
+  let s = room('a', 'b');
+  expect(errorsTo(run(s, 'a', { t: 'kick', seat: 0 }).out, 'a')).toEqual(['bad_msg']);
+  s = run(s, 'c', { t: 'hello', playerId: pid('c'), name: 'c' }).state!;
+  s = run(s, 'c', { t: 'sit', seat: null }).state!;
+  expect(errorsTo(run(s, 'c', { t: 'kick', seat: 1 }).out, 'c')).toEqual(['bad_msg']);
+  s = run(s, 'a', { t: 'kick', seat: 1 }).state!;
+  expect(s.seats[1]).toBeNull();
 });

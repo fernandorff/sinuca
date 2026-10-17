@@ -82,7 +82,7 @@ function startRoom(id: string, name: string) {
   ui.replaceChildren(hud, ctl);
 
   let room: PublicRoom | null = null;
-  let you: { playerId: string; seat: number | null } = { playerId, seat: null };
+  let you: { playerId: string; seat: number | null; voted: number[] } = { playerId, seat: null, voted: [] };
   let online = false;
   let animating = false;
   let skip = false;
@@ -140,6 +140,10 @@ function startRoom(id: string, name: string) {
     start: () => net.send({ t: 'start' }),
     rematch: () => net.send({ t: 'rematch' }),
     rerack: () => net.send({ t: 'rerack' }),
+    // o voto que completa a maioria expulsa na hora: pergunta antes
+    kick: (seat: number, name: string, decides: boolean) => {
+      if (!decides || confirm(`Expulsar ${name} desta mesa? Ele não vai conseguir voltar.`)) net.send({ t: 'kick', seat });
+    },
     // no meio do jogo pergunta antes: o placar de todos zera
     reset: () => {
       if (room?.phase === 'over' || confirm('Começar uma nova partida? O placar zera e a mesa volta para a espera, para entrar mais gente.')) net.send({ t: 'reset' });
@@ -303,6 +307,9 @@ function startRoom(id: string, name: string) {
     } else if (m.code === 'not_found') {
       net.stop();
       screen(ui, 'Mesa não encontrada', 'Confira o link ou crie uma mesa nova no lobby.', 'Ir para o lobby', act.lobby);
+    } else if (m.code === 'kicked') {
+      net.stop();
+      screen(ui, 'Você foi expulso', 'Os outros jogadores votaram para tirar você desta mesa.', 'Ir para o lobby', act.lobby);
     } else if (m.code === 'other_tab') {
       net.stop();
       screen(ui, 'Mesa aberta em outra aba', 'Você abriu esta mesa em outra aba ou janela.', 'Jogar nesta aba', () => location.reload());
