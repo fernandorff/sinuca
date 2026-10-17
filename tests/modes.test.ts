@@ -93,9 +93,9 @@ test('sinuca: penalty shot converted scores, respots and forces the ball on next
   expect(s.turn).toBe(1);
 });
 
-test('sinuca: penalty shot missed → 7 to the next player', () => {
+test('sinuca: penalty shot missed → 7 split among the others (3 each, the 1 left comes off the fouler)', () => {
   const s = sin(afterBreak(3), [hit(1, 0, 6), rail(4, 6)]);
-  expect(s.scores).toEqual([0, 7, 0]);
+  expect(s.scores).toEqual([-1, 3, 3]);
   expect(s.turn).toBe(1);
 });
 
@@ -177,4 +177,14 @@ test('solo sinuca: a foul does not give points to yourself', () => {
 test('solo snooker: a foul does not give points to yourself', () => {
   const s = snk({ ...newSnooker(1, 0), isBreak: false, ballInHand: null }, [hit(1, 0, 16), rail(4, 16)]);
   expect(s.scores).toEqual([0]);
+});
+
+test('foul with 3 or 4 players: the points are split among the others, the remainder comes off the fouler', () => {
+  // snooker, 3 jogadores, falta de 4: 2 cada para os outros dois, ninguém perde (4 = 2 + 2)
+  expect(snk(live(3), [hit(1, 0, 16), rail(4, 16)]).scores).toEqual([0, 2, 2]);
+  // snooker, 4 jogadores, falta de 4: 1 para cada um dos 3 e a sobra (1) sai de quem errou
+  expect(snk(live(4), [hit(1, 0, 16), rail(4, 16)]).scores).toEqual([-1, 1, 1, 1]);
+  // sinuca, 3 jogadores, castigo de 7: 3 para cada um e 1 sai de quem errou
+  const s = sin({ ...newSinuca(3, 0), isBreak: false, ballInHand: null }, [hit(1, 0, 6), rail(4, 6)]);
+  expect(s.scores).toEqual([-1, 3, 3]);
 });

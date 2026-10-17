@@ -2,7 +2,7 @@
 // Vermelhas 1..15 valem 1; cores 16..21 valem id − 14. Falta: no mínimo 4, ou o valor da maior bola envolvida.
 import type { SimEvent } from '../physics.ts';
 import { BAULK_X, SNOOKER, SNOOKER_COLOR_BASE, colorSpot, respot, snookerRack, type BallPos } from '../table.ts';
-import { readShot, topScorers } from './shot.ts';
+import { foulScores, readShot, topScorers } from './shot.ts';
 
 export type SnookerState = {
   mode: 'snooker';
@@ -69,8 +69,7 @@ export function applySnooker(s: SnookerState, final: BallPos[], events: SimEvent
     const onValue = typeof t === 'number' ? valueOf(t) : t === 'color' && firstHit !== null && !isRed(firstHit) ? valueOf(firstHit) : 1;
     const involved = [onValue, ...(firstHit !== null ? [valueOf(firstHit)] : []), ...potted.map(valueOf)];
     const points = Math.max(4, ...involved);
-    // sozinho na mesa, a falta não dá pontos a ninguém
-    const scores = s.scores.map((v, i) => (i === next && s.seats > 1 ? v + points : v));
+    const scores = foulScores(s.scores, s.turn, points);
     let balls = respotColors(final, pottedColors);
     if (scratch) balls = respot(balls, 0, BAULK_X - 0.12, SNOOKER.W / 2, -1, SNOOKER);
     const reason = scratch ? 'Branca encaçapada' : firstHit === null ? 'Não acertou nenhuma bola' : !legalFirst ? 'Bateu primeiro na bola errada' : 'Encaçapou a bola errada';

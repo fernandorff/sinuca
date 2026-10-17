@@ -1,10 +1,10 @@
 // Sinuca brasileira (bola da vez), com as decisões do Fernando de 17/10/2026:
 // - o tipo da tacada sai da 1ª bola tocada (sem cantar): bola da vez = livre; numerada = castigo de 7 se não cair
 // - bola da vez e outra caindo juntas: contam as duas, e a outra volta à marca
-// - branca encaçapada: 7 pontos para o próximo e branca na mão no "D"
+// - branca encaçapada: castigo de 7 (dividido entre os outros) e branca na mão no "D"
 import type { SimEvent } from '../physics.ts';
 import { BAULK_X, SNOOKER, colorSpot, respot, sinucaRack, type BallPos } from '../table.ts';
-import { readShot, topScorers } from './shot.ts';
+import { foulScores, readShot, topScorers } from './shot.ts';
 
 export type SinucaState = {
   mode: 'sinuca';
@@ -61,8 +61,7 @@ export function applySinuca(s: SinucaState, final: BallPos[], events: SimEvent[]
   const { firstHit, potted, scratch } = readShot(events);
 
   const foul = (reason: string): SinucaState => {
-    // sozinho na mesa, a falta não dá pontos a ninguém
-    const scores = s.scores.map((v, i) => (i === next && s.seats > 1 ? v + PENALTY : v));
+    const scores = foulScores(s.scores, s.turn, PENALTY);
     let balls = respotAll(final, potted);
     if (scratch) balls = respot(balls, 0, BAULK_X - 0.12, SNOOKER.W / 2, -1, SNOOKER);
     return { ...s, balls, scores, turn: next, secondFree: false, mustBallOn: false, ballInHand: scratch ? 'd' : null, isBreak: false, lastFoul: reason };
