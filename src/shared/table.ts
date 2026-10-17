@@ -1,18 +1,21 @@
 // Mesas. Unidades em metros; origem no canto (0,0) da área de jogo; x no comprimento.
 export type Pocket = { x: number; y: number; r: number };
-export type Table = { L: number; W: number; R: number; pockets: Pocket[] };
+// sideMouth: meia-largura da boca da caçapa do meio, entre as pontas das tabelas (só para o desenho)
+export type Table = { L: number; W: number; R: number; pockets: Pocket[]; sideMouth: number };
 export type BallPos = { id: number; x: number; y: number; pocketed: boolean };
 
-// cantos 0..3 em (0,0),(L,0),(L,W),(0,W); meio 4..5 em (L/2,0),(L/2,W); centro 0,6R para fora da borda
-function pockets(L: number, W: number, R: number, corner: number, side: number): Pocket[] {
+// cantos 0..3 em (0,0),(L,0),(L,W),(0,W), centro 0,6R para fora da borda;
+// meio 4..5 em (L/2,0),(L/2,W), centro sideOut para fora: a boca para o centro da bola fica com meia-largura
+// √((r+R)² − (sideOut+R)²) na linha da tabela (regra da WPA: boca de 12,7 cm, buraco fora do verde)
+function pockets(L: number, W: number, R: number, corner: number, side: number, sideOut: number): Pocket[] {
   const o = 0.6 * R;
   return [
     { x: -o, y: -o, r: corner },
     { x: L + o, y: -o, r: corner },
     { x: L + o, y: W + o, r: corner },
     { x: -o, y: W + o, r: corner },
-    { x: L / 2, y: -o, r: side },
-    { x: L / 2, y: W + o, r: side },
+    { x: L / 2, y: -sideOut, r: side },
+    { x: L / 2, y: W + sideOut, r: side },
   ];
 }
 
@@ -20,8 +23,8 @@ function pockets(L: number, W: number, R: number, corner: number, side: number):
 export const L = 2.54;
 export const W = 1.27;
 export const R = 0.028575;
-export const POCKETS = pockets(L, W, R, 0.062, 0.056);
-export const POOL: Table = { L, W, R, pockets: POCKETS };
+export const POCKETS = pockets(L, W, R, 0.062, 0.042, 0.03);
+export const POOL: Table = { L, W, R, pockets: POCKETS, sideMouth: 0.0635 };
 export const HEAD_X = L / 4;
 export const FOOT = { x: (L * 3) / 4, y: W / 2 };
 
@@ -30,7 +33,7 @@ export const SNOOKER: Table = (() => {
   const SL = 3.569;
   const SW = 1.778;
   const SR = 0.02625;
-  return { L: SL, W: SW, R: SR, pockets: pockets(SL, SW, SR, 0.05, 0.052) };
+  return { L: SL, W: SW, R: SR, pockets: pockets(SL, SW, SR, 0.05, 0.035, 0.028), sideMouth: 0.0545 };
 })();
 export const BAULK_X = 0.737;
 export const D_R = 0.292;

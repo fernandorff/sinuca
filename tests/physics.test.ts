@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { HEAD_X, L, R, SNOOKER, W, rack, snookerRack, type BallPos } from '../src/shared/table.ts';
+import { HEAD_X, L, POCKETS, R, SNOOKER, W, rack, snookerRack, type BallPos } from '../src/shared/table.ts';
 import { simulate, type Body, type Shot } from '../src/shared/physics.ts';
 
 const BREAK: Shot = { dx: 1, dy: 0, power: 1, spinX: 0, spinY: 0 };
@@ -59,7 +59,8 @@ test('no ball leaves the table', () => {
     const a = rnd() * 2 * Math.PI;
     balls = simulate(balls, { dx: Math.cos(a), dy: Math.sin(a), power: 0.2 + rnd() * 0.8, spinX: rnd() * 1.2 - 0.6, spinY: rnd() * 1.2 - 0.6 }).final;
     for (const b of balls) {
-      if (b.pocketed) continue;
+      // parada na boca de uma caçapa (pendurada na quina) não é sair da mesa
+      if (b.pocketed || POCKETS.some((p) => Math.hypot(b.x - p.x, b.y - p.y) < p.r + R)) continue;
       expect(b.x).toBeGreaterThanOrEqual(R - 1e-9);
       expect(b.x).toBeLessThanOrEqual(L - R + 1e-9);
       expect(b.y).toBeGreaterThanOrEqual(R - 1e-9);
@@ -113,4 +114,16 @@ test('hit and cushion events carry impact speed', () => {
   const { events } = simulate(rack(), BREAK);
   const hit = events.find((e) => e.kind === 'hit');
   expect(hit && 'v' in hit && hit.v).toBeGreaterThan(1);
+});
+
+test('side pocket: a ball through the mouth drops, one hitting the jaw bounces back', () => {
+  const shoot = (offset: number) =>
+    simulate(
+      [{ id: 0, x: L / 2 + offset, y: 0.4, pocketed: false }],
+      { dx: 0, dy: -1, power: 0.25, spinX: 0, spinY: 0 },
+    );
+  expect(shoot(0.02).events).toContainEqual(expect.objectContaining({ kind: 'pocket', ball: 0, pocket: 4 }));
+  const jaw = shoot(0.06);
+  expect(jaw.events.some((e) => e.kind === 'pocket')).toBe(false);
+  expect(jaw.events).toContainEqual(expect.objectContaining({ kind: 'cushion', ball: 0 }));
 });

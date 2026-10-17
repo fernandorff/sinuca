@@ -47,7 +47,7 @@ function ballTexture(mode: Mode, id: number): THREE.Texture {
 export type GameScene = ReturnType<typeof createScene>;
 
 export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
-  const { L, W, R, pockets } = MODES[mode].table;
+  const { L, W, R, pockets, sideMouth } = MODES[mode].table;
   const toScene = (x: number, y: number) => new THREE.Vector3(x - L / 2, R, y - W / 2);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   const maxRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -99,7 +99,15 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   const outerL = L + 2 * CUSHION_W + 2 * FRAME_W;
   const outerW = W + 2 * CUSHION_W + 2 * FRAME_W;
   const POCKET_DEPTH = 0.13;
-  const holes = pockets.map((p) => ({ x: p.x - L / 2, z: p.y - W / 2, r: p.r * 1.1, count: 0 }));
+  // cantos: no centro de captura da física; meio: buraco do tamanho da boca, com a borda 6 mm fora da linha
+  // da tabela (regra da WPA: 0 a 9,5 mm), então ele fica todo dentro da tabela e da madeira
+  const holes = pockets.map((p, i) =>
+    i < 4
+      ? { x: p.x - L / 2, z: p.y - W / 2, r: p.r * 1.1, count: 0 }
+      : { x: 0, z: Math.sign(p.y - W / 2) * (W / 2 + 0.006 + sideMouth), r: sideMouth, count: 0 },
+  );
+  // pontas das tabelas na caçapa do meio: cortadas a 104° (a boca abre 14° para fora a cada lado)
+  const JAW = Math.tan((14 * Math.PI) / 180);
 
   // peças da mesa: contorno em (x, z) da cena; a forma é desenhada deitada (z da cena = −y da forma)
   const toShape = (pts: [number, number][]) => {
@@ -109,8 +117,17 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     return sh;
   };
   const BEVEL = 0.004;
-  const solid = (shape: THREE.Shape, depth: number, mat: THREE.Material, base: number) => {
-    // cantos arredondados (chanfro) em vez de caixas retas
+  const solid = (shape: THREE.Shape, depth: number, mat: THREE.Material, base: number, bevel = true) => {
+    // cantos arredondados (chanfro) em vez de caixas retas; na moldura, o chanfro no corte côncavo da caçapa
+    // cruza a si mesmo e tampa o buraco, então ela vai sem chanfro
+    if (!bevel) {
+      const flat = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: depth + 2 * BEVEL, bevelEnabled: false, curveSegments: 6 }), mat);
+      flat.rotation.x = -Math.PI / 2;
+      flat.position.y = base;
+      flat.castShadow = flat.receiveShadow = true;
+      scene.add(flat);
+      return;
+    }
     const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: BEVEL, bevelSize: BEVEL, bevelSegments: 3, curveSegments: 6 });
     const m = new THREE.Mesh(geo, mat);
     m.rotation.x = -Math.PI / 2;
@@ -119,15 +136,18 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     scene.add(m);
   };
   const near = (u: number, cu: number, r: number) => Math.sqrt(Math.max(0, r * r - (u - cu) * (u - cu)));
-  const asUV = (axis: 'x' | 'z') => holes.map((h) => (axis === 'x' ? { u: h.x, v: h.z, r: h.r } : { u: h.z, v: h.x, r: h.r }));
+  const asUV = (axis: 'x' | 'z', withSides = true) =>
+    holes.filter((_, i) => withSides || i < 4).map((h) => (axis === 'x' ? { u: h.x, v: h.z, r: h.r } : { u: h.z, v: h.x, r: h.r }));
   const toXZ = (axis: 'x' | 'z', u: number, v: number): [number, number] => (axis === 'x' ? [u, v] : [v, u]);
 
   // tabela (borracha verde) entre duas caçapas: as pontas são mordidas pelos furos
   function cushion(axis: 'x' | 'z', u0: number, u1: number, v0: number, v1: number) {
     const mid = (u0 + u1) / 2;
-    const cs = asUV(axis).filter((c) => c.u > u0 - c.r && c.u < u1 + c.r && Math.abs(c.v - (v0 + v1) / 2) < c.r + Math.abs(v1 - v0));
-    const left = (v: number) => Math.max(u0, ...cs.filter((c) => c.u < mid && Math.abs(v - c.v) < c.r).map((c) => c.u + near(v, c.v, c.r)));
-    const right = (v: number) => Math.min(u1, ...cs.filter((c) => c.u > mid && Math.abs(v - c.v) < c.r).map((c) => c.u - near(v, c.v, c.r)));
+    // nas tabelas compridas, a ponta junto da caçapa do meio (u = 0) é a boca inclinada, não um círculo
+    const jaw = (v: number) => sideMouth + Math.abs(v - v0) * JAW;
+    const cs = asUV(axis, false).filter((c) => c.u > u0 - c.r && c.u < u1 + c.r && Math.abs(c.v - (v0 + v1) / 2) < c.r + Math.abs(v1 - v0));
+    const left = (v: number) => Math.max(axis === 'x' && u0 === 0 ? jaw(v) : u0, ...cs.filter((c) => c.u < mid && Math.abs(v - c.v) < c.r).map((c) => c.u + near(v, c.v, c.r)));
+    const right = (v: number) => Math.min(axis === 'x' && u1 === 0 ? -jaw(v) : u1, ...cs.filter((c) => c.u > mid && Math.abs(v - c.v) < c.r).map((c) => c.u - near(v, c.v, c.r)));
     const N = 14;
     const vs = Array.from({ length: N + 1 }, (_, i) => v0 + ((v1 - v0) * i) / N);
     const pts = [...vs.map((v) => toXZ(axis, right(v), v)), ...vs.reverse().map((v) => toXZ(axis, left(v), v))];
@@ -146,7 +166,7 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     const steps = Math.ceil((u1 - u0) / 0.004);
     const us = Array.from({ length: steps + 1 }, (_, i) => u0 + ((u1 - u0) * i) / steps);
     const pts = [...us.map((u) => toXZ(axis, u, inner(u))), toXZ(axis, u1, vOut), toXZ(axis, u0, vOut)];
-    solid(toShape(pts), frameH - 2 * BEVEL, woodMat, RAIL_H + 0.01 - frameH);
+    solid(toShape(pts), frameH - 2 * BEVEL, woodMat, RAIL_H + 0.01 - frameH, false);
   }
 
   // feltro: cobre até a borda da moldura, com os furos (assim cada furo fica inteiro dentro dele)
@@ -156,10 +176,13 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   felt.rotation.x = -Math.PI / 2;
   felt.receiveShadow = true;
   scene.add(felt);
-  const cupMat = new THREE.MeshStandardMaterial({ color: '#0b0907', roughness: 1, side: THREE.DoubleSide });
+  // forro sem luz nem reflexo: o buraco fica escuro de verdade
+  const cupMat = new THREE.MeshBasicMaterial({ color: '#060504', side: THREE.DoubleSide });
   for (const h of holes) {
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(h.r, h.r * 0.92, POCKET_DEPTH, 32, 1, true), cupMat);
-    cup.position.set(h.x, -POCKET_DEPTH / 2, h.z);
+    // forro escuro do topo da madeira até o fundo: o corte na moldura não mostra a madeira por dentro
+    const top = RAIL_H + 0.006;
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.998, h.r * 0.92, top + POCKET_DEPTH, 40, 1, true), cupMat);
+    cup.position.set(h.x, (top - POCKET_DEPTH) / 2, h.z);
     const bottom = new THREE.Mesh(new THREE.CircleGeometry(h.r * 0.92, 32), cupMat);
     bottom.rotation.x = -Math.PI / 2;
     bottom.position.set(h.x, -POCKET_DEPTH, h.z);
