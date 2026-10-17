@@ -273,3 +273,28 @@ test('aim relays the spin and power to everyone', () => {
   const r = run(s, 'a', { t: 'aim', angle: 0.5, power: 0.3, spinX: 0.2, spinY: -0.4 });
   expect(r.out.map((o) => o.msg)).toEqual([{ t: 'aim', seat: 0, angle: 0.5, power: 0.3, spinX: 0.2, spinY: -0.4 }]);
 });
+
+test('reset: back to waiting, scores gone, dropped seats freed, spectators sit, newcomers sit', () => {
+  let s = started('a', 'b');
+  s = run(s, 'c', { t: 'hello', playerId: pid('c'), name: 'c' }).state!;
+  expect(s.spectators.map((x) => x.name)).toEqual(['c']);
+  s = reduce(s, { kind: 'disconnect', playerId: pid('b') }, 0).state!;
+  const shotNo = s.shotNo;
+  s = run(s, 'a', { t: 'reset' }).state!;
+  expect(s.phase).toBe('waiting');
+  expect(s.game).toBeNull();
+  expect(s.pending).toBeNull();
+  expect(s.shotNo).toBe(shotNo + 1);
+  expect(s.seats.map((x) => x?.name ?? null).slice(0, 3)).toEqual(['a', 'c', null]);
+  expect(s.spectators).toEqual([]);
+  s = run(s, 'd', { t: 'hello', playerId: pid('d'), name: 'd' }).state!;
+  expect(s.seats[2]?.name).toBe('d');
+  expect(s.seats.filter(Boolean)).toHaveLength(3);
+});
+
+test('reset: only someone seated, and not while already waiting', () => {
+  let s = started('a', 'b');
+  s = run(s, 'c', { t: 'hello', playerId: pid('c'), name: 'c' }).state!;
+  expect(errorsTo(run(s, 'c', { t: 'reset' }).out, 'c')).toEqual(['bad_msg']);
+  expect(errorsTo(run(room('a'), 'a', { t: 'reset' }).out, 'a')).toEqual(['bad_msg']);
+});

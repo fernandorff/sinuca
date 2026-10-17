@@ -140,6 +140,10 @@ function startRoom(id: string, name: string) {
     start: () => net.send({ t: 'start' }),
     rematch: () => net.send({ t: 'rematch' }),
     rerack: () => net.send({ t: 'rerack' }),
+    // no meio do jogo pergunta antes: o placar de todos zera
+    reset: () => {
+      if (room?.phase === 'over' || confirm('Começar uma nova partida? O placar zera e a mesa volta para a espera, para entrar mais gente.')) net.send({ t: 'reset' });
+    },
     skip: () => (skip = skippable),
     music(id: TrackId) {
       musicId = id;

@@ -148,7 +148,7 @@ export function renderHud(
   muted: boolean,
   animating: boolean,
   music: TrackId,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void },
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
@@ -187,6 +187,7 @@ export function renderHud(
       el('button', { type: 'button', class: 'link', onclick: act.mute, 'aria-pressed': String(!muted) }, muted ? 'Som: desligado' : 'Som: ligado'),
       el('button', { type: 'button', class: 'link', onclick: () => showRules(room.mode) }, 'Regras'),
       el('button', { type: 'button', class: 'link', onclick: () => showRules(room.mode, true) }, 'Controles'),
+      !waiting && you.seat !== null && el('button', { type: 'button', class: 'link', onclick: act.reset, title: 'Volta para a espera: o placar zera e entra quem quiser' }, 'Nova partida'),
       el(
         'label',
         { class: 'music' },
@@ -217,6 +218,7 @@ export function renderHud(
         el('h2', {}, winnerNames ? `${winnerNames} ${(winners?.length ?? 0) > 1 ? 'venceram' : 'venceu'}!` : 'Fim de jogo'),
         g && 'scores' in g && board(room, g.scores, winners ?? []),
         you.seat !== null && el('button', { type: 'button', class: 'primary', onclick: act.rematch }, 'Revanche'),
+        you.seat !== null && el('button', { type: 'button', onclick: act.reset }, 'Nova partida (abrir lugares)'),
       ),
     you.seat === null && !waiting && el('div', { class: 'badge' }, 'assistindo'),
   ].filter((c): c is HTMLElement => !!c));

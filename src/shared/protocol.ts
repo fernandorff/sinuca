@@ -9,6 +9,7 @@ export type ClientMsg =
   | { t: 'start' }
   | { t: 'rematch' }
   | { t: 'rerack' }
+  | { t: 'reset' }
   | { t: 'sit'; seat: number | null }
   | { t: 'aim'; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'shot'; shotNo: number; shot: Shot; cue?: { x: number; y: number } }
@@ -84,6 +85,7 @@ export function parseClientMessage(raw: string): ClientMsg | null {
     case 'start':
     case 'rematch':
     case 'rerack':
+    case 'reset':
       return { t: m.t };
     case 'sit':
       return m.seat === null || int(m.seat, 0, MAX_SEATS - 1) ? { t: 'sit', seat: m.seat as number | null } : null;

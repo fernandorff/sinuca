@@ -182,6 +182,20 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       return changed({ ...s, phase: 'aiming', game: newGameFor(s.mode, s.game.seats, nextBreaker(s.game)), shotNo: s.shotNo + 1, pending: null });
     }
 
+    // nova partida (pedido do Fernando, 17/10/2026): qualquer um sentado volta a mesa para a espera; o placar zera,
+    // lugar de quem caiu fica livre, quem assistia senta nos lugares livres e quem chegar pelo link também
+    case 'reset': {
+      if (s.phase === 'waiting' || seatOf(s, playerId) < 0) return fail(s, playerId, 'bad_msg');
+      const seats = s.seats.map((x) => (x?.connected ? x : null));
+      const waiting = [...s.spectators];
+      for (let j = 0; j < seats.length && waiting.length; j++) {
+        if (seats[j]) continue;
+        const v = waiting.shift()!;
+        seats[j] = { playerId: v.playerId, name: v.name, connected: true };
+      }
+      return changed({ ...s, seats, spectators: waiting, phase: 'waiting', game: null, pending: null, shotNo: s.shotNo + 1 });
+    }
+
     // mesa livre: qualquer um sentado arruma as bolas de novo
     case 'rerack': {
       if (s.mode !== 'free' || s.phase !== 'aiming' || !s.game || seatOf(s, playerId) < 0) return fail(s, playerId, 'bad_msg');
