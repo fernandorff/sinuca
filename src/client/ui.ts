@@ -31,7 +31,7 @@ export function askName(root: HTMLElement, current: string): Promise<string> {
         overlay.remove();
         resolve(name);
       } },
-      el('h1', {}, 'Sinuca'),
+      el('h1', {}, 'Sinuquinha do Pix'),
       el('label', { for: 'name' }, 'Como seus amigos te chamam?'),
       input,
       el('button', { type: 'submit', class: 'primary' }, 'Continuar'),
@@ -73,7 +73,7 @@ export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] |
       el(
         'header',
         { class: 'hero' },
-        el('div', {}, el('h1', {}, 'Sinuca'), el('p', { class: 'muted' }, 'Mesa de bar com os amigos. Sem cadastro: crie a mesa e mande o link.')),
+        el('div', {}, el('h1', {}, 'Sinuquinha do Pix'), el('p', { class: 'muted' }, 'Mesa de bar com os amigos. Sem cadastro: crie a mesa e mande o link.')),
         el('button', { type: 'button', class: 'link', onclick: onRename }, `${name} · trocar`),
       ),
       el('section', {}, el('h2', {}, 'Criar mesa'), el('div', { class: 'modes' }, ...(Object.keys(MODES) as Mode[]).map((m) =>
