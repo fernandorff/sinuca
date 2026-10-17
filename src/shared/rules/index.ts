@@ -3,8 +3,8 @@ import type { SimEvent } from '../physics.ts';
 import { POOL, SNOOKER, type BallPos, type Table } from '../table.ts';
 import { applyShot as applyEight, newGame as newEight, type EightState } from './eightball.ts';
 import { applyFree, newFree, type FreeState } from './free.ts';
-import { applySinuca, newSinuca, type SinucaState } from './sinuca.ts';
-import { applySnooker, newSnooker, type SnookerState } from './snooker.ts';
+import { applySinuca, ballOn, newSinuca, type SinucaState } from './sinuca.ts';
+import { applySnooker, isRed, newSnooker, target, type SnookerState } from './snooker.ts';
 
 export type Mode = 'eightball' | 'free' | 'sinuca' | 'snooker';
 export type GameState = EightState | FreeState | SinucaState | SnookerState;
@@ -43,4 +43,25 @@ export function winnersOf(g: GameState): number[] | null {
 export function nextBreaker(g: GameState): number {
   if (g.mode === 'eightball' && g.winner !== null) return 1 - g.winner;
   return (g.turn + 1) % g.seats;
+}
+
+// bolas que o jogador da vez deve mirar, para o anel de destaque na mesa
+export function highlightIds(g: GameState): number[] {
+  const left = (pred: (id: number) => boolean) => g.balls.filter((b) => !b.pocketed && b.id !== 0 && pred(b.id)).map((b) => b.id);
+  if (g.mode === 'free') return [];
+  if (g.mode === 'sinuca') {
+    if (g.secondFree) return left(() => true);
+    const on = ballOn(g.balls);
+    return on === null ? [] : [on];
+  }
+  if (g.mode === 'snooker') {
+    const t = target(g);
+    if (t === 'red') return left(isRed);
+    if (t === 'color') return left((id) => !isRed(id));
+    return [t];
+  }
+  const group = g.groups[g.turn % 2];
+  if (!group) return [];
+  const mine = left((id) => (group === 'solids' ? id >= 1 && id <= 7 : id >= 9));
+  return mine.length ? mine : left((id) => id === 8);
 }

@@ -1,6 +1,6 @@
 import { simulate } from '../shared/physics.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
-import { MODES, newGameFor, type Mode } from '../shared/rules/index.ts';
+import { MODES, highlightIds, newGameFor, type Mode } from '../shared/rules/index.ts';
 import { cueOk, type PublicRoom } from '../shared/room.ts';
 import type { BallPos } from '../shared/table.ts';
 import { createControls } from './controls.ts';
@@ -174,8 +174,9 @@ function startRoom(id: string, name: string) {
 
   function applyState(r: PublicRoom) {
     room = r;
-    const { controls } = viewFor(r.mode);
+    const { controls, scene } = viewFor(r.mode);
     const g = r.game;
+    scene.setHighlight(g && r.phase === 'aiming' ? highlightIds(g) : []);
     tween(g ? g.balls : newGameFor(r.mode, MODES[r.mode].seats[0], 0).balls);
     const turnName = g ? r.seats[g.turn]?.name ?? '' : '';
     const foul = g?.lastFoul ? `Falta: ${g.lastFoul}. ` : '';
@@ -195,6 +196,7 @@ function startRoom(id: string, name: string) {
     const { scene, controls } = viewFor(room.mode);
     animating = true;
     controls.enable(null);
+    scene.setHighlight([]);
     status = `${room.seats[m.by]?.name ?? 'Alguém'} tacou.`;
     draw();
     const sim = simulate(m.balls, m.shot, undefined, MODES[room.mode].table);

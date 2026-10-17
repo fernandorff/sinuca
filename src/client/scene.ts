@@ -1,6 +1,7 @@
 // Cena 3D: a física vive no plano (x, y); aqui (x, y) vira (x − L/2, R, y − W/2) no plano XZ.
 import * as THREE from 'three';
 import { MODES, type Mode } from '../shared/rules/index.ts';
+import { predictAim } from '../shared/aim.ts';
 import { BAULK_X, D_R, SNOOKER_COLOR_BASE, type BallPos } from '../shared/table.ts';
 
 const POOL_COLORS = ['#f4f1e8', '#f2c230', '#1d4fb8', '#c8282b', '#5a2a86', '#e3711c', '#1c7a43', '#7a1f22', '#111111'];
@@ -127,6 +128,7 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   const sphere = new THREE.SphereGeometry(R, 32, 20);
   const meshes = new Map<number, THREE.Mesh>();
   const last = new Map<number, { x: number; y: number }>();
+  let current: BallPos[] = [];
   function mesh(id: number) {
     let m = meshes.get(id);
     if (!m) {
@@ -147,10 +149,46 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   shaft.castShadow = true;
   stick.add(shaft);
   scene.add(stick);
-  const aimGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(1, 0, 0)]);
-  const aimLine = new THREE.Line(aimGeo, new THREE.LineDashedMaterial({ color: '#f4f1e8', dashSize: 0.03, gapSize: 0.02, transparent: true, opacity: 0.55 }));
-  aimLine.computeLineDistances();
-  scene.add(aimLine);
+  // mira: linha até o primeiro contato, branca fantasma, e as direções da bola alvo e da branca
+  const line = (color: string, opacity: number, dashed: boolean) => {
+    const mat = dashed
+      ? new THREE.LineDashedMaterial({ color, dashSize: 0.03, gapSize: 0.02, transparent: true, opacity })
+      : new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), mat);
+    scene.add(l);
+    return l;
+  };
+  const aimLine = line('#f4f1e8', 0.6, true);
+  const targetLine = line('#ffd666', 0.85, false);
+  const cueLine = line('#f4f1e8', 0.35, false);
+  const ghost = new THREE.Mesh(sphere, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.28, depthWrite: false }));
+  scene.add(ghost);
+  const setLine = (l: THREE.Line, a: THREE.Vector3, b: THREE.Vector3) => {
+    l.geometry.setFromPoints([a, b]);
+    l.computeLineDistances();
+  };
+  const onFelt = (x: number, y: number) => toScene(x, y).setY(R * 0.25);
+
+  // anel dourado em volta das bolas da vez
+  const ringGeo = new THREE.RingGeometry(R * 1.12, R * 1.42, 32);
+  const ringMat = new THREE.MeshBasicMaterial({ color: '#ffd666', transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
+  const rings = new Map<number, THREE.Mesh>();
+  let highlighted: number[] = [];
+  function placeRings() {
+    for (const [id, ring] of rings) ring.visible = highlighted.includes(id) && !!last.get(id) && !!meshes.get(id)?.visible;
+    for (const id of highlighted) {
+      let ring = rings.get(id);
+      if (!ring) {
+        ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = -Math.PI / 2;
+        scene.add(ring);
+        rings.set(id, ring);
+      }
+      const p = last.get(id);
+      ring.visible = !!p && !!meshes.get(id)?.visible;
+      if (p) ring.position.copy(toScene(p.x, p.y)).setY(0.002);
+    }
+  }
   let cueState = { visible: false, angle: 0, pull: 0 };
   let camMode: 'aim' | 'top' = 'top';
   let follow: { x: number; y: number } | null = null;
@@ -164,38 +202,66 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     const { visible, angle, pull } = cueState;
     const cue = last.get(0);
     stick.visible = aimLine.visible = visible && !!cue;
-    if (!stick.visible) return;
+    ghost.visible = targetLine.visible = cueLine.visible = false;
+    if (!stick.visible || !cue) return;
     const c = cuePos();
-    const dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    const dir = new THREE.Vector3(dx, 0, dy);
     const gap = R + 0.012 + pull * 0.22;
     stick.position.copy(c).addScaledVector(dir, -gap).setY(R + 0.012);
     stick.rotation.set(0, -angle, 0.06);
-    aimLine.position.copy(c);
-    aimLine.rotation.set(0, -angle, 0);
-    aimLine.scale.setScalar(0.9);
+
+    const aim = predictAim(current, cue, dx, dy, MODES[mode].table);
+    setLine(aimLine, onFelt(cue.x, cue.y), onFelt(aim.end.x, aim.end.y));
+    if (aim.ghost && aim.targetDir && aim.target !== null) {
+      ghost.visible = targetLine.visible = true;
+      ghost.position.copy(toScene(aim.ghost.x, aim.ghost.y));
+      const t = last.get(aim.target)!;
+      setLine(targetLine, onFelt(t.x, t.y), onFelt(t.x + aim.targetDir.x * 0.32, t.y + aim.targetDir.y * 0.32));
+      if (aim.cueDir) {
+        cueLine.visible = true;
+        setLine(cueLine, onFelt(aim.ghost.x, aim.ghost.y), onFelt(aim.ghost.x + aim.cueDir.x * 0.18, aim.ghost.y + aim.cueDir.y * 0.18));
+      }
+    }
   }
 
   function placeCamera() {
     const aspect = camera.aspect;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
     if (camMode === 'top') {
       const portrait = aspect < 1;
       const long = L + 2 * (CUSHION_W + FRAME_W) + 0.08;
       const short = W + 2 * (CUSHION_W + FRAME_W) + 0.08;
       const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-      // distância que cabe a mesa inteira, no sentido do comprimento e da largura da tela
-      const fitH = (portrait ? long : short) / 2 / halfTan;
-      const fitW = (portrait ? short : long) / 2 / halfTan / aspect;
-      camera.position.set(0, Math.max(fitH, fitW), 0.0001);
+      // área livre, sem o HUD do topo, a coluna da força à direita e os botões de baixo (no celular)
+      const pad = portrait ? { top: 150, right: 96, bottom: 110, left: 12 } : { top: 118, right: 104, bottom: 16, left: 16 };
+      const aw = Math.max(120, w - pad.left - pad.right);
+      const ah = Math.max(120, h - pad.top - pad.bottom);
+      // distância que cabe a mesa inteira na área livre, no sentido do comprimento e da largura
+      const fitV = ((portrait ? long : short) / 2 / halfTan) * (h / ah);
+      const fitH = ((portrait ? short : long) / 2 / halfTan / aspect) * (w / aw);
+      const d = Math.max(fitV, fitH);
+      // move a câmera para a mesa aparecer no centro da área livre (em metros por pixel de tela)
+      const perPx = (2 * d * halfTan) / h;
+      const sx = (pad.left + aw / 2 - w / 2) * perPx; // quanto a mesa vai para a direita
+      const sy = (pad.top + ah / 2 - h / 2) * perPx; // quanto a mesa vai para baixo
+      // na tela deitada, direita = +x e baixo = +z; em pé (câmera girada), direita = −z e baixo = +x
+      const cx = portrait ? -sy : -sx;
+      const cz = portrait ? sx : -sy;
+      camera.position.set(cx, d, cz + 0.0001);
       camera.up.set(portrait ? -1 : 0, 0, portrait ? 0 : -1);
-      camera.lookAt(0, 0, 0);
+      camera.lookAt(cx, 0, cz);
       return;
     }
     const target = follow ? toScene(follow.x, follow.y) : cuePos();
     const dir = new THREE.Vector3(Math.cos(cueState.angle), 0, Math.sin(cueState.angle));
     camera.up.set(0, 1, 0);
-    const back = aspect < 1 ? 1.5 : 1;
-    camera.position.copy(target).addScaledVector(dir, -0.85 * back).setY(0.42 * back);
-    camera.lookAt(target.clone().addScaledVector(dir, 0.55));
+    // mais alta e mais atrás, olhando para a frente da branca: as bolas próximas não entram na câmera
+    const back = aspect < 1 ? 1.45 : 1;
+    camera.position.copy(target).addScaledVector(dir, -1.05 * back).setY(0.62 * back);
+    camera.lookAt(target.clone().addScaledVector(dir, 0.9));
   }
 
   // render só quando algo muda; o medidor de fps baixa a qualidade se o aparelho sofrer
@@ -250,6 +316,13 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
         m.position.copy(toScene(b.x, b.y));
         last.set(b.id, { x: b.x, y: b.y });
       }
+      current = balls;
+      placeRings();
+      invalidate();
+    },
+    setHighlight(ids: number[]) {
+      highlighted = ids;
+      placeRings();
       invalidate();
     },
     setCue(visible: boolean, angle: number, pull: number) {
