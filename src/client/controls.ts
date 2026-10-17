@@ -52,7 +52,7 @@ export function createControls(
 
   const cuePos = () => placed ?? opts?.cue ?? null;
   // o taco recua conforme a força escolhida
-  const showCue = () => scene.setCue(!!opts, angle, power * 0.5);
+  const showCue = () => scene.setCue(!!opts, angle, power * 0.5, { power, spinX, spinY });
 
   function sendAim() {
     showCue();
@@ -186,6 +186,7 @@ export function createControls(
     spinY = Math.abs(y) < 0.08 ? 0 : y;
     dot.style.left = `${50 + spinX * 40}%`;
     dot.style.top = `${50 - spinY * 40}%`;
+    showCue();
   }
   spin.addEventListener('pointerdown', (e) => {
     spin.setPointerCapture(e.pointerId);

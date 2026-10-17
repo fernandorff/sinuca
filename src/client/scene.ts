@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { MODES, type Mode } from '../shared/rules/index.ts';
-import { predictAim } from '../shared/aim.ts';
+import { cuePath, predictAim } from '../shared/aim.ts';
 import { BAULK_X, D_R, type BallPos } from '../shared/table.ts';
 import { ballLook } from './look.ts';
 
@@ -337,8 +337,13 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   const cueLine = line('#f4f1e8', 0.35, false);
   const ghost = new THREE.Mesh(sphere, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.28, depthWrite: false }));
   scene.add(ghost);
-  const setLine = (l: THREE.Line, a: THREE.Vector3, b: THREE.Vector3) => {
-    l.geometry.setFromPoints([a, b]);
+  const setLine = (l: THREE.Line, ...pts: THREE.Vector3[]) => {
+    // o caminho da branca muda de tamanho: o buffer não cresce sozinho, então troca a geometria
+    if (l.geometry.getAttribute('position').count !== pts.length) {
+      l.geometry.dispose();
+      l.geometry = new THREE.BufferGeometry();
+    }
+    l.geometry.setFromPoints(pts);
     l.computeLineDistances();
   };
   const onFelt = (x: number, y: number) => toScene(x, y).setY(R * 0.25);
@@ -363,7 +368,10 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       if (p) ring.position.copy(toScene(p.x, p.y)).setY(0.002);
     }
   }
-  let cueState = { visible: false, angle: 0, pull: 0 };
+  let cueState = { visible: false, angle: 0, pull: 0, power: 0, spinX: 0, spinY: 0 };
+  // o caminho da branca sai de uma simulação: só refaz quando a mira, a força, o efeito ou as bolas mudam
+  let pathKey = '';
+  let pathPts: { x: number; y: number }[] | null = null;
   let camMode: 'aim' | 'top' = 'top';
   let follow: { x: number; y: number } | null = null;
 
@@ -393,7 +401,19 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       ghost.position.copy(toScene(aim.ghost.x, aim.ghost.y));
       const t = last.get(aim.target)!;
       setLine(targetLine, onFelt(t.x, t.y), onFelt(t.x + aim.targetDir.x * 0.32, t.y + aim.targetDir.y * 0.32));
-      if (aim.cueDir) {
+      // com força escolhida (sua vez), a linha da branca mostra o efeito; sem ela (vendo o outro), só a tangente
+      const { power, spinX, spinY } = cueState;
+      if (power > 0) {
+        const key = [dx, dy, power, spinX, spinY, cue.x, cue.y, t.x, t.y].join();
+        if (key !== pathKey) {
+          pathKey = key;
+          pathPts = cuePath(current, { dx, dy, power, spinX, spinY }, MODES[mode].table);
+        }
+        if (pathPts) {
+          cueLine.visible = true;
+          setLine(cueLine, onFelt(aim.ghost.x, aim.ghost.y), ...pathPts.map((p) => onFelt(p.x, p.y)));
+        }
+      } else if (aim.cueDir) {
         cueLine.visible = true;
         setLine(cueLine, onFelt(aim.ghost.x, aim.ghost.y), onFelt(aim.ghost.x + aim.cueDir.x * 0.18, aim.ghost.y + aim.cueDir.y * 0.18));
       }
@@ -603,10 +623,10 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
         const HIT = 60 + (1 - power) * 70; // tacada forte é mais rápida
         effects.push((now) => {
           const t = now - start;
-          if (t < BACK) cueState = { visible: true, angle, pull: power * 0.5 + ((back - power * 0.5) * t) / BACK };
-          else if (t < BACK + HIT) cueState = { visible: true, angle, pull: back - ((back + 0.06) * (t - BACK)) / HIT };
+          if (t < BACK) cueState = { ...cueState, visible: true, angle, pull: power * 0.5 + ((back - power * 0.5) * t) / BACK };
+          else if (t < BACK + HIT) cueState = { ...cueState, visible: true, angle, pull: back - ((back + 0.06) * (t - BACK)) / HIT };
           else {
-            cueState = { visible: false, angle, pull: 0 };
+            cueState = { ...cueState, visible: false, angle, pull: 0 };
             resolve();
             return false;
           }
@@ -620,8 +640,9 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       shakeAmp = Math.max(shakeAmp, amount);
       invalidate();
     },
-    setCue(visible: boolean, angle: number, pull: number) {
-      cueState = { visible, angle, pull };
+    // power e efeito só servem para desenhar o caminho da branca depois do choque
+    setCue(visible: boolean, angle: number, pull: number, shot = { power: 0, spinX: 0, spinY: 0 }) {
+      cueState = { visible, angle, pull, ...shot };
       invalidate();
     },
     setCamera(mode: 'aim' | 'top', angle?: number) {

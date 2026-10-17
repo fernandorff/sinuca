@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { predictAim } from '../src/shared/aim.ts';
+import { cuePath, predictAim } from '../src/shared/aim.ts';
 import { newGameFor, highlightIds } from '../src/shared/rules/index.ts';
 import { POOL, R, W, type BallPos } from '../src/shared/table.ts';
 
@@ -42,4 +42,18 @@ test('highlight: sinuca shows the ball on, snooker shows the reds', () => {
 test('highlight: eight-ball shows the shooter group once assigned', () => {
   const g = { ...newGameFor('eightball', 2, 0), groups: ['stripes', 'solids'] } as ReturnType<typeof newGameFor>;
   expect(highlightIds(g)).toEqual([9, 10, 11, 12, 13, 14, 15]);
+});
+
+test('cue path after contact: top spin follows forward, back spin draws back', () => {
+  const balls = [ball(0, cue.x, cue.y), ball(3, 1.2, W / 2 + R * 0.4)];
+  const end = (spinY: number) => {
+    const p = cuePath(balls, { dx: 1, dy: 0, power: 0.4, spinX: 0, spinY }, POOL)!;
+    return p[p.length - 1].x - p[0].x;
+  };
+  expect(end(1)).toBeGreaterThan(0.05);
+  expect(end(-1)).toBeLessThan(-0.05);
+});
+
+test('cue path: no ball on the line, no path', () => {
+  expect(cuePath([ball(0, cue.x, cue.y)], { dx: 1, dy: 0, power: 0.4, spinX: 0, spinY: 0 }, POOL)).toBeNull();
 });

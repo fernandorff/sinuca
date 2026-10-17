@@ -1,4 +1,5 @@
 // Previsão da mira (só para desenhar; não entra na física): onde a branca encosta primeiro e para onde a bola vai.
+import { simulate, type Shot } from './physics.ts';
 import type { BallPos, Table } from './table.ts';
 
 type P = { x: number; y: number };
@@ -45,4 +46,27 @@ export function predictAim(balls: BallPos[], cue: P, dx: number, dy: number, tab
     targetDir: { x: nx, y: ny },
     cueDir: tl > 1e-6 ? { x: tx / tl, y: ty / tl } : null,
   };
+}
+
+// Caminho da branca depois do choque, com a força e o efeito de verdade: simula só a branca e a primeira bola
+// do caminho (as outras não entram, para ficar leve a cada movimento da mira). Até `len` metros depois do choque.
+export function cuePath(balls: BallPos[], shot: Shot, table: Table, len = 0.3): P[] | null {
+  const cue = balls.find((b) => b.id === 0 && !b.pocketed);
+  if (!cue) return null;
+  const aim = predictAim(balls, cue, shot.dx, shot.dy, table);
+  const target = balls.find((b) => b.id === aim.target);
+  if (!target) return null;
+  const sim = simulate([cue, target], shot, undefined, table);
+  const hit = sim.events.find((e) => e.kind === 'hit');
+  if (!hit) return null;
+  const path: P[] = [];
+  let walked = 0;
+  for (let i = Math.floor(hit.step / 4); i < sim.frames.length && walked < len; i++) {
+    const p = sim.frames[i].find((b) => b.id === 0)!;
+    if (p.pocketed) break;
+    const prev = path[path.length - 1];
+    if (prev) walked += Math.sqrt((p.x - prev.x) * (p.x - prev.x) + (p.y - prev.y) * (p.y - prev.y));
+    path.push({ x: p.x, y: p.y });
+  }
+  return path.length > 1 ? path : null;
 }
