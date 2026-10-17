@@ -115,10 +115,14 @@ export function createControls(
   // o botão Tacar dispara (decisão do Fernando de 17/10/2026)
   function setPower(p: number) {
     power = Math.min(1, Math.max(0.03, p));
-    fill.style.height = `${power * 100}%`;
-    pct.textContent = `${Math.round(power * 100)}%`;
-    powerEl.setAttribute('aria-valuenow', String(Math.round(power * 100)));
+    showPower(power);
     sendAim();
+  }
+  // a barra mostra a sua força ou, na vez dos outros, a de quem está jogando
+  function showPower(p: number) {
+    fill.style.height = `${p * 100}%`;
+    pct.textContent = `${Math.round(p * 100)}%`;
+    powerEl.setAttribute('aria-valuenow', String(Math.round(p * 100)));
   }
   function powerAt(e: PointerEvent) {
     const r = powerEl.getBoundingClientRect();
@@ -243,6 +247,7 @@ export function createControls(
       if (next) {
         remoteShown = null;
         placeDot(spinX, spinY);
+        showPower(power);
       }
       opts = next;
       placing = false;
@@ -262,6 +267,7 @@ export function createControls(
       remoteTarget = a.angle;
       remote = { power: a.power, spinX: a.spinX, spinY: a.spinY };
       placeDot(a.spinX, a.spinY);
+      if (a.power > 0) showPower(a.power);
       if (remoteShown === null) remoteShown = a.angle;
       scene.setCue(true, remoteShown, remote.power * 0.5, remote);
       if (!remoteAnimating) {
