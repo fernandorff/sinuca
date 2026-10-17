@@ -61,6 +61,8 @@ h2 { font-size: 1.05rem; margin: 0 0 10px; color: var(--muted); font-weight: 600
 
 .controls { position: fixed; inset: 0; pointer-events: none; }
 .controls.off > * { display: none; }
+/* a troca de câmera vale sempre, inclusive na vez dos outros e durante a tacada */
+.controls.off > .ctl-buttons { display: flex; }
 .controls > * { pointer-events: auto; }
 .ctl-shoot { position: absolute; right: max(12px, var(--safe-r)); top: calc(96px + var(--safe-t)); bottom: calc(118px + var(--safe-b)); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 10px; width: 76px; }
 .ctl-power { position: relative; flex: 1; min-height: 120px; max-height: 300px; width: 60px; border-radius: 30px; background: rgba(20, 17, 13, .85); border: 2px solid var(--wood); box-shadow: 0 0 0 3px rgba(201, 143, 95, .25); overflow: hidden; touch-action: none; cursor: ns-resize; }
