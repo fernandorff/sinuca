@@ -18,7 +18,7 @@ export type EightState = {
 const groupOf = (id: number): Group | null => (id >= 1 && id <= 7 ? 'solids' : id >= 9 ? 'stripes' : null);
 const other = (g: Group): Group => (g === 'solids' ? 'stripes' : 'solids');
 
-export function newGame(seats: 1 | 2 | 4, breakingSeat: number): EightState {
+export function newGame(seats: number, breakingSeat: number): EightState {
   return {
     mode: 'eightball',
     balls: rack(),

@@ -57,7 +57,8 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#0d0a07');
-  scene.fog = new THREE.Fog('#0d0a07', 4.5, 11);
+  const fog = new THREE.Fog('#0d0a07', 4.5, 11);
+  scene.fog = fog;
   const camera = new THREE.PerspectiveCamera(48, 1, 0.05, 20);
   // reflexos: um "quarto" de luz gerado na hora vira o mapa de ambiente (bolas e madeira brilham)
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -447,6 +448,9 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
       // área livre, sem o HUD do topo, a coluna da força à direita e os botões de baixo (no celular)
       const pad = portrait ? { top: 150, right: 96, bottom: 110, left: 12 } : { top: 118, right: 104, bottom: 16, left: 16 };
+      // com muitos jogadores a lista quebra em várias linhas (até 8 no celular): a mesa começa abaixo dela
+      const seatsBottom = document.querySelector('.hud .seats')?.getBoundingClientRect().bottom ?? 0;
+      pad.top = Math.max(pad.top, seatsBottom + 8);
       const aw = Math.max(120, w - pad.left - pad.right);
       const ah = Math.max(120, h - pad.top - pad.bottom);
       // distância que cabe a mesa inteira na área livre, no sentido do comprimento e da largura
@@ -461,10 +465,15 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       const cx = portrait ? -sy : -sx;
       const cz = portrait ? sx : -sy;
       camera.position.set(cx, d, cz + 0.0001);
+      // câmera longe (celular com muitos jogadores): a névoa começa na mesa, senão ela escurece
+      fog.near = Math.max(4.5, d);
+      fog.far = fog.near + 6.5;
       camera.up.set(portrait ? -1 : 0, 0, portrait ? 0 : -1);
       camera.lookAt(cx, 0, cz);
       return;
     }
+    fog.near = 4.5;
+    fog.far = 11;
     const target = follow ? toScene(follow.x, follow.y) : cuePos();
     const dir = new THREE.Vector3(Math.cos(cueState.angle), 0, Math.sin(cueState.angle));
     camera.up.set(0, 1, 0);

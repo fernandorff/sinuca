@@ -39,10 +39,25 @@ test('hello to uninitialized room → not_found', () => {
   expect(errorsTo(r.out, 'a')).toEqual(['not_found']);
 });
 
-test('4 seats then spectator', () => {
-  const s = room('a', 'b', 'c', 'd', 'e');
-  expect(s.seats.map((x) => x?.name)).toEqual(['a', 'b', 'c', 'd']);
-  expect(s.spectators.map((x) => x.name)).toEqual(['e']);
+test('8 seats then spectator', () => {
+  const s = room('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i');
+  expect(s.seats.map((x) => x?.name)).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
+  expect(s.spectators.map((x) => x.name)).toEqual(['i']);
+});
+
+test('8 players: individual modes start with any count, bola 8 only with even teams (or alone)', () => {
+  const eight = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  expect(run(roomOf('snooker', ...eight), 'a', { t: 'start' }).state!.game!.seats).toBe(8);
+  expect(run(roomOf('free', ...eight.slice(0, 7)), 'a', { t: 'start' }).state!.game!.seats).toBe(7);
+  expect(run(roomOf('eightball', ...eight), 'a', { t: 'start' }).state!.game!.seats).toBe(8);
+  expect(run(roomOf('eightball', ...eight.slice(0, 6)), 'a', { t: 'start' }).state!.game!.seats).toBe(6);
+  expect(errorsTo(run(roomOf('eightball', ...eight.slice(0, 5)), 'a', { t: 'start' }).out, 'a')).toEqual(['bad_start']);
+});
+
+test('sit accepts seats 0 to 7', () => {
+  let s = roomOf('free', 'a');
+  s = run(s, 'a', { t: 'sit', seat: 7 }).state!;
+  expect(s.seats[7]?.name).toBe('a');
 });
 
 test('start with 3 → bad_start; one stands → start with 2 → aiming', () => {
@@ -53,7 +68,7 @@ test('start with 3 → bad_start; one stands → start with 2 → aiming', () =>
   s = run(s, 'a', { t: 'start' }).state!;
   expect(s.phase).toBe('aiming');
   expect(s.game!.seats).toBe(2);
-  expect(s.seats.map((x) => x?.name ?? null)).toEqual(['a', 'c', null, null]);
+  expect(s.seats.map((x) => x?.name ?? null)).toEqual(['a', 'c', null, null, null, null, null, null]);
 });
 
 test('shot from wrong seat → not_your_turn', () => {
@@ -140,7 +155,7 @@ test('public room has no playerIds', () => {
 test('sit: swap to free seat and stand to spectator in waiting', () => {
   let s = room('a', 'b', 'c');
   s = run(s, 'a', { t: 'sit', seat: 3 }).state!;
-  expect(s.seats.map((x) => x?.name ?? null)).toEqual([null, 'b', 'c', 'a']);
+  expect(s.seats.map((x) => x?.name ?? null)).toEqual([null, 'b', 'c', 'a', null, null, null, null]);
   s = run(s, 'c', { t: 'sit', seat: null }).state!;
   expect(s.spectators.map((x) => x.name)).toEqual(['c']);
   s = run(s, 'c', { t: 'sit', seat: 0 }).state!;
@@ -169,7 +184,7 @@ test('start counts only connected seats', () => {
   s = reduce(s, { kind: 'disconnect', playerId: pid('c') }, 0).state!;
   s = run(s, 'a', { t: 'start' }).state!;
   expect(s.phase).toBe('aiming');
-  expect(s.seats.map((x) => x?.name ?? null)).toEqual(['a', 'b', null, null]);
+  expect(s.seats.map((x) => x?.name ?? null)).toEqual(['a', 'b', null, null, null, null, null, null]);
 });
 
 test('sit can take a disconnected seat while waiting', () => {

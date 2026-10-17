@@ -1,7 +1,7 @@
 // Máquina de estados de uma mesa: pura, sem Cloudflare. O Durable Object só entrega mensagens e grava o estado.
 import type { Shot, SimEvent } from './physics.ts';
 import type { ClientMsg, ErrorCode, ServerMsg } from './protocol.ts';
-import { MODES, applyFor, newGameFor, nextBreaker, winnersOf, type GameState, type Mode } from './rules/index.ts';
+import { MAX_SEATS, MODES, applyFor, newGameFor, nextBreaker, winnersOf, type GameState, type Mode } from './rules/index.ts';
 import { HEAD_X, inD, type BallPos } from './table.ts';
 
 export const FALLBACK_MS = 10_000;
@@ -50,7 +50,7 @@ const ERRORS: Record<ErrorCode, string> = {
 };
 
 export function createRoom(id: string, now: number, mode: Mode = 'eightball'): RoomState {
-  return { id, mode, createdAt: now, seats: [null, null, null, null], spectators: [], phase: 'waiting', game: null, shotNo: 0, pending: null };
+  return { id, mode, createdAt: now, seats: Array(MAX_SEATS).fill(null), spectators: [], phase: 'waiting', game: null, shotNo: 0, pending: null };
 }
 
 export function publicRoom(s: RoomState): PublicRoom {
@@ -84,8 +84,8 @@ function canShoot(s: RoomState, playerId: string): boolean {
   if (turnSeat?.playerId === playerId) return true;
   const mine = seatOf(s, playerId);
   if (turnSeat?.connected || mine < 0) return false;
-  // quem caiu: na bola 8 em dupla o parceiro joga a vez; nos modos individuais, qualquer um sentado joga por ele
-  if (s.game.mode === 'eightball') return s.game.seats === 4 && mine % 2 === s.game.turn % 2;
+  // quem caiu: na bola 8 em time um parceiro joga a vez; nos modos individuais, qualquer um sentado joga por ele
+  if (s.game.mode === 'eightball') return s.game.seats > 2 && mine % 2 === s.game.turn % 2;
   return true;
 }
 
@@ -173,7 +173,7 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       // quem caiu antes de começar fica de fora (ao voltar, entra como espectador)
       const sitting = s.seats.filter((x): x is Seat => x !== null && x.connected);
       if (s.phase !== 'waiting' || !MODES[s.mode].seats.includes(sitting.length)) return fail(s, playerId, 'bad_start');
-      const seats = [0, 1, 2, 3].map((j) => sitting[j] ?? null);
+      const seats = Array.from({ length: MAX_SEATS }, (_, j) => sitting[j] ?? null);
       return changed({ ...s, seats, phase: 'aiming', game: newGameFor(s.mode, sitting.length, 0), pending: null });
     }
 

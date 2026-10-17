@@ -9,17 +9,20 @@ import { applySnooker, isRed, newSnooker, target, type SnookerState } from './sn
 export type Mode = 'eightball' | 'free' | 'sinuca' | 'snooker';
 export type GameState = EightState | FreeState | SinucaState | SnookerState;
 
+// até 8 por mesa (pedido do Fernando, 17/10/2026); na bola 8, times iguais (lugar par contra ímpar)
+export const MAX_SEATS = 8;
+const ANY = [1, 2, 3, 4, 5, 6, 7, 8];
 export const MODES: Record<Mode, { label: string; table: Table; seats: number[] }> = {
-  eightball: { label: 'Bola 8', table: POOL, seats: [1, 2, 4] },
-  free: { label: 'Mesa livre', table: POOL, seats: [1, 2, 3, 4] },
-  sinuca: { label: 'Sinuca brasileira', table: SNOOKER, seats: [1, 2, 3, 4] },
-  snooker: { label: 'Snooker', table: SNOOKER, seats: [1, 2, 3, 4] },
+  eightball: { label: 'Bola 8', table: POOL, seats: [1, 2, 4, 6, 8] },
+  free: { label: 'Mesa livre', table: POOL, seats: ANY },
+  sinuca: { label: 'Sinuca brasileira', table: SNOOKER, seats: ANY },
+  snooker: { label: 'Snooker', table: SNOOKER, seats: ANY },
 };
 
 export const isMode = (m: unknown): m is Mode => typeof m === 'string' && m in MODES;
 
 export function newGameFor(mode: Mode, seats: number, breakingSeat: number): GameState {
-  if (mode === 'eightball') return newEight(seats as 1 | 2 | 4, breakingSeat);
+  if (mode === 'eightball') return newEight(seats, breakingSeat);
   if (mode === 'free') return newFree(seats, breakingSeat);
   if (mode === 'sinuca') return newSinuca(seats, breakingSeat);
   return newSnooker(seats, breakingSeat);

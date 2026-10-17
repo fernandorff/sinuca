@@ -49,10 +49,10 @@ test('name: cut at 20 chars, empty → Jogador', () => {
   expect(parseClientMessage(JSON.stringify({ t: 'hello', playerId: PID, name: '   ' }))).toMatchObject({ name: 'Jogador' });
 });
 
-test('sit accepts seat 0..3 or null', () => {
-  expect(parseClientMessage('{"t":"sit","seat":3}')).toEqual({ t: 'sit', seat: 3 });
+test('sit accepts seat 0..7 or null', () => {
+  expect(parseClientMessage('{"t":"sit","seat":7}')).toEqual({ t: 'sit', seat: 7 });
   expect(parseClientMessage('{"t":"sit","seat":null}')).toEqual({ t: 'sit', seat: null });
-  expect(parseClientMessage('{"t":"sit","seat":4}')).toBeNull();
+  expect(parseClientMessage('{"t":"sit","seat":8}')).toBeNull();
 });
 
 test('accepts snooker ball ids up to 21 and 22 balls; rejects id 22', () => {

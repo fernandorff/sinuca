@@ -17,7 +17,7 @@ export const RULES: Record<Mode, { tagline: string; items: string[] }> = {
   free: {
     tagline: 'Sem árbitro: só treino e diversão.',
     items: [
-      'De 1 a 4 jogadores.',
+      'De 1 a 8 jogadores.',
       'Encaçapou, joga de novo; errou, passa a vez.',
       'Branca na caçapa volta para a cabeceira.',
       '"Arrumar mesa" coloca o triângulo de novo.',

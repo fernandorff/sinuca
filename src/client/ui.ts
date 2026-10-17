@@ -1,5 +1,5 @@
 // Telas em DOM: apelido, lobby, HUD da mesa e avisos.
-import { MODES, winnersOf, type GameState, type Mode } from '../shared/rules/index.ts';
+import { MAX_SEATS, MODES, winnersOf, type GameState, type Mode } from '../shared/rules/index.ts';
 import { ballOn } from '../shared/rules/sinuca.ts';
 import { target, valueOf } from '../shared/rules/snooker.ts';
 import type { PublicRoom } from '../shared/room.ts';
@@ -62,7 +62,7 @@ export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] |
                 {},
                 el('span', { class: 'code' }, r.id),
                 el('span', {}, modeLabel(r.mode)),
-                el('span', { class: 'muted' }, `${r.players}/4 · ${PHASE[r.phase] ?? r.phase}`),
+                el('span', { class: 'muted' }, `${r.players}/${MAX_SEATS} · ${PHASE[r.phase] ?? r.phase}`),
                 el('a', { class: 'button', href: '#' + r.id }, r.phase === 'waiting' ? 'Entrar' : 'Assistir'),
               ),
             ),
@@ -97,7 +97,7 @@ export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] |
   );
 }
 
-// "2 ou 4 jogadores", "1 a 4 jogadores", "2 a 4 jogadores"
+// "1, 2, 4, 6 ou 8 jogadores", "1 a 8 jogadores"
 function seatsText(mode: Mode): string {
   const n = MODES[mode].seats;
   const contiguous = n.every((v, i) => i === 0 || v === n[i - 1] + 1);
@@ -153,7 +153,7 @@ export function renderHud(
   const g = room.game;
   const waiting = room.phase === 'waiting';
   const teams = room.mode === 'eightball';
-  const seatCount = g ? g.seats : 4;
+  const seatCount = g ? g.seats : MAX_SEATS;
   const seats = room.seats.slice(0, seatCount).map((s, i) => {
     const team = teams ? ` team-${i % 2}` : '';
     const group = g?.mode === 'eightball' ? g.groups[i % 2] : null;

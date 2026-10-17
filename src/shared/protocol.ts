@@ -1,6 +1,7 @@
 // Mensagens entre o navegador e a mesa. A única validação do jogo fica aqui: formato e tamanho.
 import type { Shot, SimEvent } from './physics.ts';
 import type { PublicRoom } from './room.ts';
+import { MAX_SEATS } from './rules/index.ts';
 import type { BallPos } from './table.ts';
 
 export type ClientMsg =
@@ -85,7 +86,7 @@ export function parseClientMessage(raw: string): ClientMsg | null {
     case 'rerack':
       return { t: m.t };
     case 'sit':
-      return m.seat === null || int(m.seat, 0, 3) ? { t: 'sit', seat: m.seat as number | null } : null;
+      return m.seat === null || int(m.seat, 0, MAX_SEATS - 1) ? { t: 'sit', seat: m.seat as number | null } : null;
     case 'aim': {
       // força e efeito vão junto para os outros verem o ajuste ao vivo; cliente antigo sem eles manda zero
       const { power = 0, spinX = 0, spinY = 0 } = m;
