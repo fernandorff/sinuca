@@ -148,10 +148,10 @@ test('sit: swap to free seat and stand to spectator in waiting', () => {
 
 test('rematch after over', () => {
   let s = started('a', 'b');
-  s = { ...s, phase: 'over', game: { ...s.game!, winner: 0 } };
+  s = { ...s, phase: 'over', game: { ...s.game!, winner: 0 } as RoomState['game'] };
   s = run(s, 'b', { t: 'rematch' }).state!;
   expect(s.phase).toBe('aiming');
-  expect(s.game!.winner).toBeNull();
+  expect(s.game!.mode === 'eightball' && s.game!.winner).toBeNull();
   expect(s.game!.turn).toBe(1);
 });
 
@@ -190,4 +190,50 @@ test('nextAlarm: fallback, empty room and zombie sweep', () => {
   expect(nextAlarm(withFallback, undefined, 0, 2000)).toBe(1000 + FALLBACK_MS);
   expect(nextAlarm(started('a', 'b'), 5000, 0, 6000)).toBe(5000 + EMPTY_MS);
   expect(nextAlarm(started('a', 'b'), undefined, 2, 6000)).toBe(6000 + SWEEP_MS);
+});
+
+function roomOf(mode: RoomState['mode'], ...names: string[]): RoomState {
+  let s: RoomState = createRoom('WXYZ', 0, mode);
+  for (const n of names) s = run(s, n, { t: 'hello', playerId: pid(n), name: n }).state!;
+  return s;
+}
+
+test('start respects the seat counts of each mode', () => {
+  expect(run(roomOf('free', 'a'), 'a', { t: 'start' }).state!.phase).toBe('aiming');
+  expect(run(roomOf('sinuca', 'a', 'b', 'c'), 'a', { t: 'start' }).state!.game!.mode).toBe('sinuca');
+  expect(errorsTo(run(roomOf('sinuca', 'a'), 'a', { t: 'start' }).out, 'a')).toEqual(['bad_start']);
+  expect(errorsTo(run(roomOf('eightball', 'a', 'b', 'c'), 'a', { t: 'start' }).out, 'a')).toEqual(['bad_start']);
+});
+
+test('rerack in free mode puts the balls back', () => {
+  let s = run(roomOf('free', 'a', 'b'), 'a', { t: 'start' }).state!;
+  s = { ...s, game: { ...s.game!, balls: s.game!.balls.map((b) => (b.id === 3 ? { ...b, pocketed: true } : b)) } };
+  s = run(s, 'b', { t: 'rerack' }).state!;
+  expect(s.game!.balls.every((b) => !b.pocketed)).toBe(true);
+  expect(s.phase).toBe('aiming');
+});
+
+test('rerack is refused outside free mode', () => {
+  const s = run(roomOf('eightball', 'a', 'b'), 'a', { t: 'start' }).state!;
+  expect(errorsTo(run(s, 'a', { t: 'rerack' }).out, 'a')).toEqual(['bad_msg']);
+});
+
+test('sinuca: cue in hand must stay inside the D', () => {
+  const s = run(roomOf('sinuca', 'a', 'b'), 'a', { t: 'start' }).state!;
+  expect(errorsTo(run(s, 'a', { t: 'shot', shotNo: 0, shot: SHOT, cue: { x: 1.5, y: 0.9 } }).out, 'a')).toEqual(['bad_cue']);
+  expect(run(s, 'a', { t: 'shot', shotNo: 0, shot: SHOT, cue: { x: 0.6, y: 0.889 } }).state!.phase).toBe('rolling');
+});
+
+test('individual modes: a connected player covers a disconnected turn', () => {
+  let s = run(roomOf('sinuca', 'a', 'b', 'c'), 'a', { t: 'start' }).state!;
+  s = reduce(s, { kind: 'disconnect', playerId: pid('a') }, 0).state!;
+  expect(run(s, 'c', { t: 'shot', shotNo: 0, shot: SHOT }).state!.phase).toBe('rolling');
+});
+
+test('snooker game ends → over with rematch', () => {
+  let s = run(roomOf('snooker', 'a', 'b'), 'a', { t: 'start' }).state!;
+  s = { ...s, phase: 'over', game: { ...s.game!, winners: [1] } as RoomState['game'] };
+  s = run(s, 'a', { t: 'rematch' }).state!;
+  expect(s.phase).toBe('aiming');
+  expect(s.game!.mode).toBe('snooker');
 });

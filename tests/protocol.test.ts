@@ -26,8 +26,8 @@ test('rejects power outside [0,1]', () => expect(parseClientMessage(shot({ power
 test('rejects spin outside unit disc', () => expect(parseClientMessage(shot({ spinX: 0.8, spinY: 0.8 }))).toBeNull());
 test('rejects non-unit direction', () => expect(parseClientMessage(shot({ dx: 0.5, dy: 0 }))).toBeNull());
 
-test('rejects final with more than 16 balls', () => {
-  const final = Array.from({ length: 17 }, (_, i) => ball(i % 16));
+test('rejects final with more than 22 balls', () => {
+  const final = Array.from({ length: 23 }, (_, i) => ball(i % 22));
   expect(parseClientMessage(JSON.stringify({ t: 'result', shotNo: 0, final, events: [] }))).toBeNull();
 });
 
@@ -54,3 +54,11 @@ test('sit accepts seat 0..3 or null', () => {
   expect(parseClientMessage('{"t":"sit","seat":null}')).toEqual({ t: 'sit', seat: null });
   expect(parseClientMessage('{"t":"sit","seat":4}')).toBeNull();
 });
+
+test('accepts snooker ball ids up to 21 and 22 balls; rejects id 22', () => {
+  const final = Array.from({ length: 22 }, (_, i) => ball(i));
+  expect(parseClientMessage(JSON.stringify({ t: 'result', shotNo: 0, final, events: [{ step: 1, kind: 'hit', a: 0, b: 21, v: 1.5 }] }))).not.toBeNull();
+  expect(parseClientMessage(JSON.stringify({ t: 'result', shotNo: 0, final: [ball(22)], events: [] }))).toBeNull();
+});
+
+test('accepts rerack', () => expect(parseClientMessage('{"t":"rerack"}')).toEqual({ t: 'rerack' }));

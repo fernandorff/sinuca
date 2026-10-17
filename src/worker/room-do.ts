@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { parseClientMessage, type ServerMsg } from '../shared/protocol.ts';
+import type { Mode } from '../shared/rules/index.ts';
 import { EMPTY_MS, createRoom, nextAlarm, reduce, type Input, type Out, type RoomState } from '../shared/room.ts';
 
 // o navegador manda 'ping' a cada 10 s; sem 'ping' há 45 s, a conexão é dada como morta
@@ -38,9 +39,9 @@ export class Room extends DurableObject<Env> {
     return this.ctx.getWebSockets().filter((ws) => ws !== except && this.playerOf(ws) !== null);
   }
 
-  async init(id: string) {
+  async init(id: string, mode: Mode) {
     if (await this.load()) return;
-    await this.commit(createRoom(id, Date.now()));
+    await this.commit(createRoom(id, Date.now(), mode));
   }
 
   async fetch(): Promise<Response> {

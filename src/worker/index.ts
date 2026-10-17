@@ -1,3 +1,5 @@
+import { isMode } from '../shared/rules/index.ts';
+
 export { Lobby } from './lobby.ts';
 export { Room } from './room-do.ts';
 
@@ -17,10 +19,10 @@ export default {
 
     if (url.pathname === '/api/rooms' && req.method === 'POST') {
       const body = (await req.json().catch(() => null)) as { mode?: unknown } | null;
-      if (body?.mode !== 'eightball') return new Response('modo inválido', { status: 400 });
+      if (!isMode(body?.mode)) return new Response('modo inválido', { status: 400 });
       let id = newCode();
       while (await lobby.has(id)) id = newCode();
-      await env.ROOM.get(env.ROOM.idFromName(id)).init(id);
+      await env.ROOM.get(env.ROOM.idFromName(id)).init(id, body.mode);
       return Response.json({ id });
     }
 

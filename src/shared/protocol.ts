@@ -7,6 +7,7 @@ export type ClientMsg =
   | { t: 'hello'; playerId: string; name: string }
   | { t: 'start' }
   | { t: 'rematch' }
+  | { t: 'rerack' }
   | { t: 'sit'; seat: number | null }
   | { t: 'aim'; angle: number }
   | { t: 'shot'; shotNo: number; shot: Shot; cue?: { x: number; y: number } }
@@ -22,6 +23,8 @@ export type ServerMsg =
 
 const MAX_RESULT = 64 * 1024;
 const MAX_OTHER = 2 * 1024;
+// snooker: branca + 15 vermelhas + 6 cores
+const MAX_ID = 21;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -43,15 +46,15 @@ function shot(v: unknown): Shot | null {
 }
 
 function ball(v: unknown): BallPos | null {
-  if (!isObj(v) || !int(v.id, 0, 15) || !num(v.x) || !num(v.y) || typeof v.pocketed !== 'boolean') return null;
+  if (!isObj(v) || !int(v.id, 0, MAX_ID) || !num(v.x) || !num(v.y) || typeof v.pocketed !== 'boolean') return null;
   return { id: v.id, x: v.x, y: v.y, pocketed: v.pocketed };
 }
 
 function event(v: unknown): SimEvent | null {
   if (!isObj(v) || !int(v.step, 0, 1e6)) return null;
-  if (v.kind === 'hit' && int(v.a, 0, 15) && int(v.b, 0, 15)) return { step: v.step, kind: 'hit', a: v.a, b: v.b };
-  if (v.kind === 'cushion' && int(v.ball, 0, 15)) return { step: v.step, kind: 'cushion', ball: v.ball };
-  if (v.kind === 'pocket' && int(v.ball, 0, 15) && int(v.pocket, 0, 5))
+  if (v.kind === 'hit' && int(v.a, 0, MAX_ID) && int(v.b, 0, MAX_ID)) return { step: v.step, kind: 'hit', a: v.a, b: v.b };
+  if (v.kind === 'cushion' && int(v.ball, 0, MAX_ID)) return { step: v.step, kind: 'cushion', ball: v.ball };
+  if (v.kind === 'pocket' && int(v.ball, 0, MAX_ID) && int(v.pocket, 0, 5))
     return { step: v.step, kind: 'pocket', ball: v.ball, pocket: v.pocket };
   return null;
 }
@@ -79,6 +82,7 @@ export function parseClientMessage(raw: string): ClientMsg | null {
       return { t: 'hello', playerId: m.playerId, name: cleanName(m.name) };
     case 'start':
     case 'rematch':
+    case 'rerack':
       return { t: m.t };
     case 'sit':
       return m.seat === null || int(m.seat, 0, 3) ? { t: 'sit', seat: m.seat as number | null } : null;
@@ -92,7 +96,7 @@ export function parseClientMessage(raw: string): ClientMsg | null {
       return { t: 'shot', shotNo: m.shotNo, shot: s, cue: { x: m.cue.x, y: m.cue.y } };
     }
     case 'result': {
-      const final = all(m.final, 16, ball);
+      const final = all(m.final, MAX_ID + 1, ball);
       const events = all(m.events, 1000, event);
       if (!final || !events || !int(m.shotNo, 0, 1e9)) return null;
       return { t: 'result', shotNo: m.shotNo, final, events };

@@ -1,8 +1,8 @@
 // Máquina de estados de uma mesa: pura, sem Cloudflare. O Durable Object só entrega mensagens e grava o estado.
 import type { Shot, SimEvent } from './physics.ts';
 import type { ClientMsg, ErrorCode, ServerMsg } from './protocol.ts';
-import { applyShot, newGame, type EightState } from './rules/eightball.ts';
-import { HEAD_X, L, R, W, type BallPos } from './table.ts';
+import { MODES, applyFor, newGameFor, nextBreaker, winnersOf, type GameState, type Mode } from './rules/index.ts';
+import { HEAD_X, inD, type BallPos } from './table.ts';
 
 export const FALLBACK_MS = 10_000;
 export const EMPTY_MS = 10 * 60 * 1000;
@@ -11,12 +11,12 @@ export const SWEEP_MS = 30_000;
 export type Seat = { playerId: string; name: string; connected: boolean };
 export type RoomState = {
   id: string;
-  mode: 'eightball';
+  mode: Mode;
   createdAt: number;
   seats: (Seat | null)[];
   spectators: { playerId: string; name: string }[];
   phase: 'waiting' | 'aiming' | 'rolling' | 'over';
-  game: EightState | null;
+  game: GameState | null;
   shotNo: number;
   pending: {
     shotNo: number;
@@ -45,12 +45,12 @@ const ERRORS: Record<ErrorCode, string> = {
   other_tab: 'Mesa aberta em outra aba.',
   not_your_turn: 'Não é a sua vez.',
   bad_cue: 'A branca não pode ficar aí.',
-  bad_start: 'A partida começa com 2 ou 4 jogadores sentados.',
+  bad_start: 'Esse modo não começa com esse número de jogadores sentados.',
   bad_msg: 'Mensagem inválida.',
 };
 
-export function createRoom(id: string, now: number): RoomState {
-  return { id, mode: 'eightball', createdAt: now, seats: [null, null, null, null], spectators: [], phase: 'waiting', game: null, shotNo: 0, pending: null };
+export function createRoom(id: string, now: number, mode: Mode = 'eightball'): RoomState {
+  return { id, mode, createdAt: now, seats: [null, null, null, null], spectators: [], phase: 'waiting', game: null, shotNo: 0, pending: null };
 }
 
 export function publicRoom(s: RoomState): PublicRoom {
@@ -83,20 +83,24 @@ function canShoot(s: RoomState, playerId: string): boolean {
   const turnSeat = s.seats[s.game.turn];
   if (turnSeat?.playerId === playerId) return true;
   const mine = seatOf(s, playerId);
-  // dupla: o parceiro joga a vez de quem caiu
-  return s.game.seats === 4 && !turnSeat?.connected && mine >= 0 && mine % 2 === s.game.turn % 2;
+  if (turnSeat?.connected || mine < 0) return false;
+  // quem caiu: na bola 8 em dupla o parceiro joga a vez; nos modos individuais, qualquer um sentado joga por ele
+  if (s.game.mode === 'eightball') return s.game.seats === 4 && mine % 2 === s.game.turn % 2;
+  return true;
 }
 
-export function cueOk(game: EightState, cue: { x: number; y: number }): boolean {
+export function cueOk(game: GameState, cue: { x: number; y: number }): boolean {
+  const { L, W, R } = MODES[game.mode].table;
   if (!game.ballInHand) return false;
   if (cue.x < R || cue.x > L - R || cue.y < R || cue.y > W - R) return false;
   if (game.ballInHand === 'kitchen' && cue.x > HEAD_X) return false;
-  return game.balls.every((b) => b.id === 0 || b.pocketed || (b.x - cue.x) ** 2 + (b.y - cue.y) ** 2 >= 4 * R * R);
+  if (game.ballInHand === 'd' && !inD(cue)) return false;
+  return game.balls.every((b) => b.id === 0 || b.pocketed || (b.x - cue.x) * (b.x - cue.x) + (b.y - cue.y) * (b.y - cue.y) >= 4 * R * R);
 }
 
 function finish(s: RoomState, final: BallPos[], events: SimEvent[]): RoomState {
-  const game = applyShot(s.game!, final, events);
-  return { ...s, game, shotNo: s.shotNo + 1, phase: game.winner !== null ? 'over' : 'aiming', pending: null };
+  const game = applyFor(s.game!, final, events);
+  return { ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null };
 }
 
 function hello(s: RoomState, playerId: string, name: string): { state: RoomState; out: Out[] } {
@@ -168,15 +172,20 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
     case 'start': {
       // quem caiu antes de começar fica de fora (ao voltar, entra como espectador)
       const sitting = s.seats.filter((x): x is Seat => x !== null && x.connected);
-      if (s.phase !== 'waiting' || (sitting.length !== 2 && sitting.length !== 4)) return fail(s, playerId, 'bad_start');
+      if (s.phase !== 'waiting' || !MODES[s.mode].seats.includes(sitting.length)) return fail(s, playerId, 'bad_start');
       const seats = [0, 1, 2, 3].map((j) => sitting[j] ?? null);
-      return changed({ ...s, seats, phase: 'aiming', game: newGame(sitting.length as 2 | 4, 0), pending: null });
+      return changed({ ...s, seats, phase: 'aiming', game: newGameFor(s.mode, sitting.length, 0), pending: null });
     }
 
     case 'rematch': {
-      if (s.phase !== 'over' || !s.game || s.game.winner === null) return fail(s, playerId, 'bad_msg');
-      const loser = 1 - s.game.winner;
-      return changed({ ...s, phase: 'aiming', game: newGame(s.game.seats as 2 | 4, loser), shotNo: s.shotNo + 1, pending: null });
+      if (s.phase !== 'over' || !s.game) return fail(s, playerId, 'bad_msg');
+      return changed({ ...s, phase: 'aiming', game: newGameFor(s.mode, s.game.seats, nextBreaker(s.game)), shotNo: s.shotNo + 1, pending: null });
+    }
+
+    // mesa livre: qualquer um sentado arruma as bolas de novo
+    case 'rerack': {
+      if (s.mode !== 'free' || s.phase !== 'aiming' || !s.game || seatOf(s, playerId) < 0) return fail(s, playerId, 'bad_msg');
+      return changed({ ...s, game: newGameFor('free', s.game.seats, s.game.turn), shotNo: s.shotNo + 1 });
     }
 
     case 'aim':

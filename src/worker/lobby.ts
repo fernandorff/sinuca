@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 
-export type RoomInfo = { id: string; mode: 'eightball'; players: number; phase: string };
+export type RoomInfo = { id: string; mode: string; players: number; phase: string };
 
 // Lista de mesas abertas: um único objeto ('lobby') que todo navegador na tela inicial escuta.
 export class Lobby extends DurableObject<Env> {
