@@ -180,8 +180,9 @@ export function createControls(
   // efeito: arrastar o ponto dentro do círculo (para cima = seguida, para baixo = puxada)
   function setSpin(e: PointerEvent) {
     const r = spin.getBoundingClientRect();
-    let x = ((e.clientX - r.left) / r.width) * 2 - 1;
-    let y = -(((e.clientY - r.top) / r.height) * 2 - 1);
+    spinTo(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
+  }
+  function spinTo(x: number, y: number) {
     const d = Math.sqrt(x * x + y * y);
     if (d > 1) {
       x /= d;
@@ -192,6 +193,14 @@ export function createControls(
     placeDot(spinX, spinY);
     sendAim();
   }
+  // WASD movem o ponto de efeito, 10% por toque (pedido do Fernando, 17/10/2026)
+  const WASD: Record<string, [number, number]> = { KeyW: [0, 0.1], KeyS: [0, -0.1], KeyA: [-0.1, 0], KeyD: [0.1, 0] };
+  window.addEventListener('keydown', (e) => {
+    const step = WASD[e.code];
+    if (!step || !opts || e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement | null)?.closest('input, textarea')) return;
+    e.preventDefault();
+    spinTo(spinX + step[0], spinY + step[1]);
+  });
   spin.addEventListener('pointerdown', (e) => {
     spin.setPointerCapture(e.pointerId);
     setSpin(e);

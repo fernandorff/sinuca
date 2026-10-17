@@ -53,7 +53,7 @@ export const CONTROLS = [
   'Mirar: toque ou clique na mesa (vista de cima) ou arraste para os lados (vista de mira). Setas ← → giram de pouquinho; com Shift, mais rápido.',
   'Força: toque ou arraste na barra (mais em baixo, mais forte) ou use a rodinha do mouse.',
   'Tacar: botão Tacar ou barra de Espaço.',
-  'Efeito: arraste o ponto vermelho na bolinha branca (para cima = seguida, para baixo = puxada, para os lados = efeito lateral).',
+  'Efeito: arraste o ponto vermelho na bolinha branca ou use W A S D (para cima = seguida, para baixo = puxada, para os lados = efeito lateral).',
   'Bola na mão: arraste a branca para onde quiser.',
   'Durante a tacada: Pular (ou Espaço) vai direto para o fim.',
 ];

@@ -186,6 +186,7 @@ export function renderHud(
       el('span', { class: `dot ${online ? 'on' : 'off'}`, title: online ? 'conectado' : 'reconectando…' }),
       el('button', { type: 'button', class: 'link', onclick: act.mute, 'aria-pressed': String(!muted) }, muted ? 'Som: desligado' : 'Som: ligado'),
       el('button', { type: 'button', class: 'link', onclick: () => showRules(room.mode) }, 'Regras'),
+      el('button', { type: 'button', class: 'link', onclick: () => showRules(room.mode, true) }, 'Controles'),
       el(
         'label',
         { class: 'music' },
@@ -255,8 +256,8 @@ function board(room: PublicRoom, scores: number[], winners: number[]): HTMLEleme
   return el('ul', { class: 'board' }, ...rows.map((r) => el('li', { class: winners.includes(r.i) ? 'win' : '' }, el('span', {}, r.name), el('b', {}, String(r.pts)))));
 }
 
-// menu de regras do modo, com os controles no fim
-export function showRules(mode: Mode) {
+// menu de regras do modo, com os controles no fim; só os controles pelo botão Controles da mesa
+export function showRules(mode: Mode, onlyControls = false) {
   document.querySelector('.rules-overlay')?.remove();
   const close = () => overlay.remove();
   const overlay = el(
@@ -265,10 +266,14 @@ export function showRules(mode: Mode) {
     el(
       'div',
       { class: 'panel rules', role: 'dialog', 'aria-label': 'Regras de ' + MODES[mode].label },
-      el('h1', {}, MODES[mode].label),
-      el('p', { class: 'muted' }, RULES[mode].tagline),
-      el('h2', {}, 'Regras'),
-      el('ul', {}, ...RULES[mode].items.map((t) => el('li', {}, t))),
+      ...(onlyControls
+        ? []
+        : [
+            el('h1', {}, MODES[mode].label),
+            el('p', { class: 'muted' }, RULES[mode].tagline),
+            el('h2', {}, 'Regras'),
+            el('ul', {}, ...RULES[mode].items.map((t) => el('li', {}, t))),
+          ]),
       el('h2', {}, 'Controles'),
       el('ul', {}, ...CONTROLS.map((t) => el('li', {}, t))),
       el('button', { type: 'button', class: 'primary', onclick: close }, 'Entendi'),
