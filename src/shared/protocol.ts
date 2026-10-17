@@ -12,6 +12,7 @@ export type ClientMsg =
   | { t: 'reset' }
   | { t: 'kick'; seat: number }
   | { t: 'video'; id: string | null }
+  | { t: 'timer'; seconds: number }
   | { t: 'sit'; seat: number | null }
   | { t: 'aim'; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'shot'; shotNo: number; shot: Shot; cue?: { x: number; y: number } }
@@ -20,10 +21,14 @@ export type ClientMsg =
 export type ErrorCode = 'not_found' | 'other_tab' | 'not_your_turn' | 'bad_cue' | 'bad_start' | 'bad_msg' | 'kicked';
 
 export type ServerMsg =
-  | { t: 'state'; room: PublicRoom; you: { playerId: string; seat: number | null; voted: number[] } }
+  // now = relógio do servidor no envio: cada tela acerta a contagem do tempo pela diferença com o próprio relógio
+  | { t: 'state'; room: PublicRoom; you: { playerId: string; seat: number | null; voted: number[] }; now: number }
   | { t: 'shot'; shotNo: number; by: number; shot: Shot; balls: BallPos[] }
   | { t: 'aim'; seat: number; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'error'; code: ErrorCode; msg: string };
+
+// limites de tempo por jogada que a mesa oferece (0 = sem limite)
+export const TIMER_OPTIONS = [0, 15, 30, 45, 60, 90];
 
 const MAX_RESULT = 64 * 1024;
 const MAX_OTHER = 2 * 1024;
@@ -89,6 +94,8 @@ export function parseClientMessage(raw: string): ClientMsg | null {
     case 'rerack':
     case 'reset':
       return { t: m.t };
+    case 'timer':
+      return TIMER_OPTIONS.includes(m.seconds as number) ? { t: 'timer', seconds: m.seconds as number } : null;
     case 'video':
       return m.id === null || (typeof m.id === 'string' && /^[A-Za-z0-9_-]{11}$/.test(m.id)) ? { t: 'video', id: m.id as string | null } : null;
     case 'kick':

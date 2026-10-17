@@ -135,3 +135,7 @@ body.in-room::after { content: ''; position: fixed; inset: 0; pointer-events: no
 .status.kick-alert { background: rgba(140, 30, 30, .88); color: #fff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .status.kick-alert button { min-height: 28px; padding: 2px 10px; font-size: .8rem; }
 .status.kick-alert button.on { background: var(--bad); border-color: #fff; }
+/* contagem do limite de tempo: no alto, no meio; vermelha nos últimos 5 segundos */
+.turn-clock { position: fixed; z-index: 4; top: calc(8px + var(--safe-t)); left: 50%; transform: translateX(-50%); background: rgba(20, 17, 13, .88); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-weight: 700; pointer-events: none; }
+.turn-clock[hidden] { display: none; }
+.turn-clock.low { background: var(--bad); color: #fff; }

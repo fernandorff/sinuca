@@ -84,7 +84,9 @@ function startRoom(id: string, name: string) {
   const videoBox = el('div', { class: 'video-box', hidden: true });
   let videoMini = store.get('sinuca:videoMini') === '1';
   videoBox.classList.toggle('mini', videoMini);
-  ui.replaceChildren(hud, ctl, videoBox);
+  // contagem do limite de tempo por jogada: fora do HUD, atualizada sozinha a cada 1/4 de segundo
+  const clock = el('div', { class: 'turn-clock', hidden: true, role: 'timer' });
+  ui.replaceChildren(hud, ctl, videoBox, clock);
   const video = createVideo(videoBox);
   let videoPlaying = false;
 
@@ -146,6 +148,30 @@ function startRoom(id: string, name: string) {
     }, 60_000);
   }
 
+  // limite de tempo: todos veem a contagem; quem está na vez taca sozinho quando ela zera (contada na hora do
+  // servidor, então relógio errado no aparelho não atrapalha)
+  let firedFor = -1;
+  let clockSkew = 0;
+  setInterval(() => {
+    const r = room;
+    const g = r?.game;
+    const limit = r?.turnLimit ?? 0;
+    if (!r || !g || !limit || r.phase !== 'aiming' || r.rolling || animating || r.turnStartedAt === undefined) {
+      clock.hidden = true;
+      return;
+    }
+    const left = Math.ceil((r.turnStartedAt + limit * 1000 - (Date.now() + clockSkew)) / 1000);
+    clock.hidden = false;
+    clock.textContent = `${r.seats[g.turn]?.name ?? 'Vez'}: ${Math.max(0, left)} s`;
+    clock.classList.toggle('low', left <= 5);
+    const c = view?.controls;
+    if (left <= 0 && c?.active && firedFor !== r.turnStartedAt) {
+      firedFor = r.turnStartedAt;
+      toast('Acabou o tempo: tacada com a mira e a força de agora.');
+      c.shootNow();
+    }
+  }, 250);
+
   // Espaço durante a tacada pula a animação (na sua vez, Espaço taca: isso fica nos controles)
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && animating && skippable) {
@@ -194,6 +220,7 @@ function startRoom(id: string, name: string) {
       else toast('Não reconheci esse link do YouTube.');
     },
     stopVideo: () => net.send({ t: 'video', id: null }),
+    timer: (seconds: number) => net.send({ t: 'timer', seconds }),
     videoMini: () => videoMini,
     toggleVideo() {
       videoMini = !videoMini;
@@ -355,6 +382,8 @@ function startRoom(id: string, name: string) {
   function onMsg(m: ServerMsg) {
     if (m.t === 'state') {
       you = m.you;
+      // diferença entre o relógio do servidor e o deste aparelho (a contagem do tempo usa a hora do servidor)
+      if (typeof m.now === 'number') clockSkew = m.now - Date.now();
       if (animating) queued = m.room;
       else applyState(m.room);
     } else if (m.t === 'shot') animate(m);

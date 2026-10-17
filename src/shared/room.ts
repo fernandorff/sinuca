@@ -26,6 +26,10 @@ export type RoomState = {
   kicked?: string[];
   // vídeo do YouTube que a mesa toda ouve: um por vez, qualquer um troca ou tira (pedido do Fernando, 17/10/2026)
   video?: { id: string; by: string; startedAt: number } | null;
+  // limite de tempo por jogada em segundos (0 ou ausente = sem limite) e quando a vez atual começou; quem está
+  // na vez taca sozinho quando o tempo acaba, com a mira e a força daquele momento (pedido do Fernando, 17/10/2026)
+  turnLimit?: number;
+  turnStartedAt?: number;
   pending: {
     shotNo: number;
     by: number;
@@ -84,12 +88,12 @@ export function publicRoom(s: RoomState): PublicRoom {
 }
 
 // um 'state' por participante conectado, cada um com o próprio assento
-function broadcast(s: RoomState): Out[] {
+function broadcast(s: RoomState, now: number): Out[] {
   const room = publicRoom(s);
   const seated = s.seats.flatMap((x, i) => (x?.connected ? [{ playerId: x.playerId, seat: i as number | null }] : []));
   const watching = s.spectators.map((x) => ({ playerId: x.playerId, seat: null }));
   const voted = (id: string) => s.seats.flatMap((x, i) => (x && (s.kick ?? []).some((k) => k.target === x.playerId && k.voters.includes(id)) ? [i] : []));
-  return [...seated, ...watching].map((you) => ({ to: you.playerId, msg: { t: 'state', room, you: { ...you, voted: voted(you.playerId) } } }));
+  return [...seated, ...watching].map((you) => ({ to: you.playerId, msg: { t: 'state', room, you: { ...you, voted: voted(you.playerId) }, now } }));
 }
 
 const fail = (s: RoomState | null, playerId: string, code: ErrorCode) => ({
@@ -123,10 +127,10 @@ const LOG_MAX = 40;
 // mesas salvas antes do log não têm o campo
 const withLog = (s: RoomState, line: string): RoomState => ({ ...s, log: [...(s.log ?? []), line].slice(-LOG_MAX) });
 
-function finish(s: RoomState, final: BallPos[], events: SimEvent[]): RoomState {
+function finish(s: RoomState, final: BallPos[], events: SimEvent[], now: number): RoomState {
   const game = applyFor(s.game!, final, events);
   const line = describeShot(s.game!, game, events, s.seats.map((x) => x?.name ?? null));
-  return skipEmpty(withLog({ ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null }, line));
+  return skipEmpty(withLog({ ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null, turnStartedAt: now }, line));
 }
 
 // vez de um lugar vazio (de quem foi expulso): passa para o próximo sentado; na bola 8 em time, para o
@@ -140,8 +144,8 @@ function skipEmpty(s: RoomState): RoomState {
   return s.seats[turn] ? { ...s, game: { ...g, turn } } : s;
 }
 
-function hello(s: RoomState, playerId: string, name: string): { state: RoomState; out: Out[] } {
-  const changed = (next: RoomState) => ({ state: next, out: broadcast(next) });
+function hello(s: RoomState, playerId: string, name: string, now: number): { state: RoomState; out: Out[] } {
+  const changed = (next: RoomState) => ({ state: next, out: broadcast(next, now) });
   const i = seatOf(s, playerId);
   if (i >= 0) return changed({ ...s, seats: s.seats.map((x, j) => (j === i ? { playerId, name, connected: true } : x)) });
   const spectators = s.spectators.filter((x) => x.playerId !== playerId);
@@ -167,11 +171,11 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
   if (s === null) {
     return input.kind === 'msg' && input.msg.t === 'hello' ? fail(null, input.playerId, 'not_found') : { state: null, out: [] };
   }
-  const changed = (next: RoomState) => ({ state: next, out: broadcast(next) });
+  const changed = (next: RoomState) => ({ state: next, out: broadcast(next, now) });
 
   if (input.kind === 'tick') {
     const p = s.pending;
-    if (s.phase === 'rolling' && p?.fallback && now - p.shotAt >= FALLBACK_MS) return changed(finish(s, p.fallback.final, p.fallback.events));
+    if (s.phase === 'rolling' && p?.fallback && now - p.shotAt >= FALLBACK_MS) return changed(finish(s, p.fallback.final, p.fallback.events, now));
     return { state: s, out: [] };
   }
 
@@ -186,7 +190,7 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
   switch (msg.t) {
     case 'hello': {
       if (s.kicked?.includes(playerId)) return fail(s, playerId, 'kicked');
-      const r = hello(s, playerId, msg.name);
+      const r = hello(s, playerId, msg.name, now);
       // chegou no meio de uma tacada: recebe a tacada também, para simular e mandar o resultado
       const p = r.state.pending;
       if (p) r.out.push({ to: playerId, msg: { t: 'shot', shotNo: p.shotNo, by: p.by, shot: p.shot, balls: p.balls } });
@@ -212,12 +216,12 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       const sitting = s.seats.filter((x): x is Seat => x !== null && x.connected);
       if (s.phase !== 'waiting' || !MODES[s.mode].seats.includes(sitting.length)) return fail(s, playerId, 'bad_start');
       const seats = Array.from({ length: MAX_SEATS }, (_, j) => sitting[j] ?? null);
-      return changed(withLog({ ...s, seats, phase: 'aiming', game: newGameFor(s.mode, sitting.length, 0), pending: null }, `Partida começou com ${sitting.length} ${sitting.length > 1 ? 'jogadores' : 'jogador'}`));
+      return changed(withLog({ ...s, seats, phase: 'aiming', game: newGameFor(s.mode, sitting.length, 0), pending: null, turnStartedAt: now }, `Partida começou com ${sitting.length} ${sitting.length > 1 ? 'jogadores' : 'jogador'}`));
     }
 
     case 'rematch': {
       if (s.phase !== 'over' || !s.game) return fail(s, playerId, 'bad_msg');
-      return changed(withLog({ ...s, phase: 'aiming', game: newGameFor(s.mode, s.game.seats, nextBreaker(s.game)), shotNo: s.shotNo + 1, pending: null }, 'Revanche'));
+      return changed(withLog({ ...s, phase: 'aiming', game: newGameFor(s.mode, s.game.seats, nextBreaker(s.game)), shotNo: s.shotNo + 1, pending: null, turnStartedAt: now }, 'Revanche'));
     }
 
     // nova partida (pedido do Fernando, 17/10/2026): qualquer um sentado volta a mesa para a espera; o placar zera,
@@ -245,15 +249,25 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       const voters = prev.includes(playerId) ? prev.filter((v) => v !== playerId) : [...prev, playerId];
       const next: RoomState = { ...s, kick: [...others, { target: target.playerId, voters }] };
       if (votersOf(next, target.playerId).length < kickNeed(next, target.playerId)) return changed(next);
-      const out = skipEmpty(
+      const skipped = skipEmpty(
         withLog(
           { ...next, seats: next.seats.map((x, j) => (j === msg.seat ? null : x)), kick: others, kicked: [...(s.kicked ?? []), target.playerId] },
           `${target.name} foi expulso por votação`,
         ),
       );
+      // se a vez era dele e passou para outro, o relógio começa de novo
+      const out = skipped.game?.turn !== s.game?.turn ? { ...skipped, turnStartedAt: now } : skipped;
       const r = changed(out);
       r.out.push({ to: target.playerId, msg: { t: 'error', code: 'kicked', msg: ERRORS.kicked } });
       return r;
+    }
+
+    case 'timer': {
+      const i = seatOf(s, playerId);
+      if (i < 0) return fail(s, playerId, 'bad_msg');
+      const who = s.seats[i]!.name;
+      const line = msg.seconds ? `${who} mudou o tempo por jogada para ${msg.seconds} s` : `${who} tirou o limite de tempo`;
+      return changed(withLog({ ...s, turnLimit: msg.seconds, turnStartedAt: now }, line));
     }
 
     case 'video': {
@@ -266,7 +280,7 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
     // mesa livre: qualquer um sentado arruma as bolas de novo
     case 'rerack': {
       if (s.mode !== 'free' || s.phase !== 'aiming' || !s.game || seatOf(s, playerId) < 0) return fail(s, playerId, 'bad_msg');
-      return changed({ ...s, game: newGameFor('free', s.game.seats, s.game.turn), shotNo: s.shotNo + 1 });
+      return changed({ ...s, game: newGameFor('free', s.game.seats, s.game.turn), shotNo: s.shotNo + 1, turnStartedAt: now });
     }
 
     case 'aim':
@@ -294,7 +308,7 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       if (s.phase !== 'rolling' || !p || msg.shotNo !== p.shotNo) return { state: s, out: [] };
       const ids = s.game!.balls.map((b) => b.id).join();
       if (msg.final.map((b) => b.id).join() !== ids) return fail(s, playerId, 'bad_msg');
-      if (playerId === p.shooter || now - p.shotAt >= FALLBACK_MS) return changed(finish(s, msg.final, msg.events));
+      if (playerId === p.shooter || now - p.shotAt >= FALLBACK_MS) return changed(finish(s, msg.final, msg.events, now));
       if (p.fallback) return { state: s, out: [] };
       return { state: { ...s, pending: { ...p, fallback: { final: msg.final, events: msg.events } } }, out: [] };
     }

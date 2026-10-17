@@ -370,3 +370,23 @@ test('video: anyone in the room puts one on or takes it off; one at a time', () 
   expect(publicRoom(s).video).toBeNull();
   expect(s.log.at(-1)).toBe('b tirou o vídeo');
 });
+
+test('turn timer: seated players change it live; every new turn restarts the clock', () => {
+  let s = run(roomOf('free', 'a', 'b'), 'a', { t: 'start' }, 1000).state!;
+  expect(s.turnStartedAt).toBe(1000);
+  s = run(s, 'b', { t: 'timer', seconds: 30 }, 4000).state!;
+  expect(s.turnLimit).toBe(30);
+  expect(s.turnStartedAt).toBe(4000);
+  expect(s.log.at(-1)).toBe('b mudou o tempo por jogada para 30 s');
+  const { state, result } = breakShot(s, 'a', 5000);
+  s = run(state, 'a', result, 9000).state!;
+  expect(s.turnStartedAt).toBe(9000);
+  s = run(s, 'a', { t: 'timer', seconds: 0 }, 9500).state!;
+  expect(s.log.at(-1)).toBe('a tirou o limite de tempo');
+});
+
+test('turn timer: spectators cannot change it', () => {
+  let s = started('a', 'b');
+  s = run(s, 'c', { t: 'hello', playerId: pid('c'), name: 'c' }).state!;
+  expect(errorsTo(run(s, 'c', { t: 'timer', seconds: 30 }).out, 'c')).toEqual(['bad_msg']);
+});

@@ -3,6 +3,7 @@ import { MAX_SEATS, MODES, winnersOf, type GameState, type Mode } from '../share
 import { ballOn } from '../shared/rules/sinuca.ts';
 import { target, valueOf } from '../shared/rules/snooker.ts';
 import { COLOR_NAME } from '../shared/log.ts';
+import { TIMER_OPTIONS } from '../shared/protocol.ts';
 import type { PublicRoom } from '../shared/room.ts';
 import { ballLook } from './look.ts';
 import { TRACKS, type TrackId } from './music.ts';
@@ -159,7 +160,7 @@ export function renderHud(
   animating: boolean,
   music: TrackId,
   musicVol: number,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void },
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void; timer(seconds: number): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
@@ -253,6 +254,17 @@ export function renderHud(
         },
         'Jogadas',
       ),
+      you.seat !== null &&
+        el(
+          'label',
+          { class: 'music', title: 'Tempo por jogada; ao acabar, a tacada sai com a mira e a força do momento' },
+          'Tempo ',
+          el(
+            'select',
+            { onchange: (e: Event) => act.timer(Number((e.target as HTMLSelectElement).value)) },
+            ...TIMER_OPTIONS.map((t) => el('option', { value: String(t), selected: t === (room.turnLimit ?? 0) }, t ? `${t} s` : 'Sem limite')),
+          ),
+        ),
       el('button', { type: 'button', class: 'link', onclick: act.video, title: 'Toca para a mesa toda; substitui o que estiver tocando' }, room.video ? 'Trocar vídeo' : 'Colocar vídeo'),
       room.video && el('button', { type: 'button', class: 'link', onclick: act.stopVideo, title: `Colocado por ${room.video.by}` }, 'Tirar vídeo'),
       room.video && el('button', { type: 'button', class: 'link', onclick: act.toggleVideo }, act.videoMini() ? 'Mostrar vídeo' : 'Esconder vídeo'),

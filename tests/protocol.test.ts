@@ -76,3 +76,9 @@ test('video: an 11-character YouTube id or null', () => {
   expect(parseClientMessage('{"t":"video","id":null}')).toEqual({ t: 'video', id: null });
   expect(parseClientMessage('{"t":"video","id":"<script>"}')).toBeNull();
 });
+
+test('timer: only the offered limits', () => {
+  expect(parseClientMessage('{"t":"timer","seconds":30}')).toEqual({ t: 'timer', seconds: 30 });
+  expect(parseClientMessage('{"t":"timer","seconds":0}')).toEqual({ t: 'timer', seconds: 0 });
+  expect(parseClientMessage('{"t":"timer","seconds":7}')).toBeNull();
+});

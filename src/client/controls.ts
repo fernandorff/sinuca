@@ -151,10 +151,15 @@ export function createControls(
   });
   setPower(power);
 
-  shootBtn.addEventListener('click', () => {
+  shootBtn.addEventListener('click', () => shoot(false));
+  // forced: o tempo acabou — taca com a mira e a força do momento; branca num lugar proibido fica onde estava
+  function shoot(forced: boolean) {
     if (!opts) return;
-    const cue = placed ?? undefined;
-    if (cue && !opts.cueValid(cue)) return;
+    let cue = placed ?? undefined;
+    if (cue && !opts.cueValid(cue)) {
+      if (!forced) return;
+      cue = undefined;
+    }
     // seno e cosseno só aqui, uma vez: a física recebe a direção pronta
     let dx = Math.cos(angle);
     let dy = Math.sin(angle);
@@ -162,7 +167,7 @@ export function createControls(
     dx /= n;
     dy /= n;
     cb.onShoot({ dx, dy, power, spinX, spinY }, cue);
-  });
+  }
 
   // setas giram a mira de pouquinho (Shift: mais rápido) — mira fina no desktop
   window.addEventListener('keydown', (e) => {
@@ -274,6 +279,10 @@ export function createControls(
         remoteAnimating = true;
         requestAnimationFrame(stepRemote);
       }
+    },
+    shootNow: () => shoot(true),
+    get active() {
+      return opts !== null;
     },
     hideRemote() {
       remoteShown = null;
