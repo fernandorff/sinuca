@@ -139,8 +139,9 @@ const LOG_MAX = 40;
 const withLog = (s: RoomState, line: string): RoomState => ({ ...s, log: [...(s.log ?? []), line].slice(-LOG_MAX) });
 
 function finish(s: RoomState, final: BallPos[], events: SimEvent[], now: number): RoomState {
-  const game = applyFor(s.game!, final, events);
-  const line = describeShot(s.game!, game, events, s.seats.map((x) => x?.name ?? null));
+  const item = s.pending?.shot.item;
+  const game = applyFor(s.game!, final, events, item);
+  const line = describeShot(s.game!, game, events, s.seats.map((x) => x?.name ?? null), item);
   return skipEmpty(withLog({ ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null, turnStartedAt: now }, line));
 }
 
@@ -313,7 +314,10 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       if (seat === null) return changed({ ...s, joins });
       const g = s.game;
       // lugar novo no fim da ordem: a partida ganha um assento (com placar zerado)
-      const game = g && seat >= g.seats ? ({ ...g, seats: seat + 1, ...('scores' in g ? { scores: [...g.scores, 0] } : {}) } as GameState) : g;
+      const game =
+        g && seat >= g.seats
+          ? ({ ...g, seats: seat + 1, ...('scores' in g ? { scores: [...g.scores, 0] } : {}), ...('stock' in g && g.stock ? { stock: [...g.stock, []] } : {}) } as GameState)
+          : g;
       return changed(
         withLog(
           {
@@ -352,11 +356,14 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
 
     case 'aim':
       if (!canShoot(s, playerId)) return { state: s, out: [] };
-      return { state: s, out: [{ to: 'all', msg: { t: 'aim', seat: s.game!.turn, angle: msg.angle, power: msg.power, spinX: msg.spinX, spinY: msg.spinY } }] };
+      return { state: s, out: [{ to: 'all', msg: { t: 'aim', seat: s.game!.turn, angle: msg.angle, power: msg.power, spinX: msg.spinX, spinY: msg.spinY, item: msg.item } }] };
 
     case 'shot': {
       if (!canShoot(s, playerId) || msg.shotNo !== s.shotNo) return fail(s, playerId, 'not_your_turn');
       let game = s.game!;
+      // poder só de quem tem no estoque (Snooker com poderes)
+      const item = msg.shot.item;
+      if (item && !(game.mode === 'snooker' && game.stock?.[game.turn]?.includes(item))) return fail(s, playerId, 'bad_msg');
       if (msg.cue) {
         if (!cueOk(game, msg.cue)) return fail(s, playerId, 'bad_cue');
         const { x, y } = msg.cue;

@@ -2,7 +2,8 @@
 export type Pocket = { x: number; y: number; r: number };
 // só para o desenho: sideMouth = meia-largura da boca do meio; cornerMouth = boca do canto, medida na diagonal
 // entre as pontas das tabelas (WPA: 11,4 a 11,75 cm no pool)
-export type Table = { L: number; W: number; R: number; pockets: Pocket[]; sideMouth: number; cornerMouth: number };
+// friction: multiplica o atrito do pano (só a Mesa de gelo usa)
+export type Table = { L: number; W: number; R: number; pockets: Pocket[]; sideMouth: number; cornerMouth: number; friction?: number };
 export type BallPos = { id: number; x: number; y: number; pocketed: boolean };
 
 // cantos 0..3 em (0,0),(L,0),(L,W),(0,W), centro 0,6R para fora da borda;

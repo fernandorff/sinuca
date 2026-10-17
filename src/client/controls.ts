@@ -1,5 +1,5 @@
 // Mira, força, efeito e bola na mão. Toque e mouse pelos Pointer Events.
-import type { Shot } from '../shared/physics.ts';
+import type { Item, Shot } from '../shared/physics.ts';
 import type { GameScene } from './scene.ts';
 
 export type ControlOpts = {
@@ -13,7 +13,7 @@ export function createControls(
   root: HTMLElement,
   scene: GameScene,
   cb: {
-    onAim(aim: { angle: number; power: number; spinX: number; spinY: number }): void;
+    onAim(aim: { angle: number; power: number; spinX: number; spinY: number; item: Item | null }): void;
     onShoot(shot: Shot, cue?: { x: number; y: number }): void;
     onMoveCue(pos: { x: number; y: number }, valid: boolean): void;
   },
@@ -52,7 +52,9 @@ export function createControls(
 
   const cuePos = () => placed ?? opts?.cue ?? null;
   // o taco recua conforme a força escolhida
-  const showCue = () => scene.setCue(!!opts, angle, power * 0.5, { power, spinX, spinY });
+  // poder escolhido para esta tacada (Snooker com poderes)
+  let item: Item | null = null;
+  const showCue = () => scene.setCue(!!opts, angle, power * 0.5, { power, spinX, spinY, item });
 
   // mira, força e efeito vão para os outros no máximo 20 vezes por segundo, sempre com o último ajuste
   function sendAim() {
@@ -60,7 +62,7 @@ export function createControls(
     if (!opts || aimTimer) return;
     aimTimer = window.setTimeout(() => {
       aimTimer = 0;
-      if (opts) cb.onAim({ angle, power, spinX, spinY });
+      if (opts) cb.onAim({ angle, power, spinX, spinY, item });
     }, 50);
   }
   const placeDot = (x: number, y: number) => {
@@ -166,7 +168,7 @@ export function createControls(
     const n = Math.sqrt(dx * dx + dy * dy);
     dx /= n;
     dy /= n;
-    cb.onShoot({ dx, dy, power, spinX, spinY }, cue);
+    cb.onShoot({ dx, dy, power, spinX, spinY, ...(item ? { item } : {}) }, cue);
   }
 
   // setas giram a mira de pouquinho (Shift: mais rápido) — mira fina no desktop
@@ -230,7 +232,7 @@ export function createControls(
   });
 
   let remoteTarget = 0;
-  let remote = { power: 0, spinX: 0, spinY: 0 };
+  let remote: { power: number; spinX: number; spinY: number; item: Item | null } = { power: 0, spinX: 0, spinY: 0, item: null };
   let remoteShown: number | null = null;
   let remoteAnimating = false;
   function stepRemote() {
@@ -255,6 +257,7 @@ export function createControls(
         showPower(power);
       }
       opts = next;
+      item = null;
       placing = false;
       placed = null;
       root.classList.toggle('off', !next);
@@ -267,10 +270,10 @@ export function createControls(
     // espectadores veem a mira de quem está na vez: as posições chegam ~20 por segundo e o taco desliza
     // entre elas a cada quadro, em vez de pular (senão a jogada do outro parece rodar a poucos FPS)
     // e o ponto de efeito e a força de quem joga aparecem ao vivo (pedido do Fernando, 17/10/2026)
-    showAim(a: { angle: number; power: number; spinX: number; spinY: number }) {
+    showAim(a: { angle: number; power: number; spinX: number; spinY: number; item?: Item | null }) {
       if (opts) return;
       remoteTarget = a.angle;
-      remote = { power: a.power, spinX: a.spinX, spinY: a.spinY };
+      remote = { power: a.power, spinX: a.spinX, spinY: a.spinY, item: a.item ?? null };
       placeDot(a.spinX, a.spinY);
       if (a.power > 0) showPower(a.power);
       if (remoteShown === null) remoteShown = a.angle;
@@ -283,6 +286,15 @@ export function createControls(
     shootNow: () => shoot(true),
     get active() {
       return opts !== null;
+    },
+    // tocar no poder escolhe; tocar de novo desiste
+    setItem(i: Item) {
+      if (!opts) return;
+      item = item === i ? null : i;
+      sendAim();
+    },
+    get item() {
+      return item;
     },
     hideRemote() {
       remoteShown = null;

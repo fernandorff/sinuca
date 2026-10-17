@@ -3,7 +3,7 @@ import type { ClientMsg, ServerMsg } from '../src/shared/protocol.ts';
 import { EMPTY_MS, FALLBACK_MS, SWEEP_MS, createRoom, nextAlarm, publicRoom, reduce, type Out, type RoomState } from '../src/shared/room.ts';
 import { winnersOf } from '../src/shared/rules/index.ts';
 import { simulate, type Shot } from '../src/shared/physics.ts';
-import { R } from '../src/shared/table.ts';
+import { R, SNOOKER } from '../src/shared/table.ts';
 
 const pid = (n: string) => `player-${n}0000`;
 const SHOT: Shot = { dx: 1, dy: 0, power: 1, spinX: 0, spinY: 0 };
@@ -270,8 +270,8 @@ test('solo eight-ball: losing ends the game with no winner names', () => {
 
 test('aim relays the spin and power to everyone', () => {
   const s = run(roomOf('free', 'a'), 'a', { t: 'start' }).state!;
-  const r = run(s, 'a', { t: 'aim', angle: 0.5, power: 0.3, spinX: 0.2, spinY: -0.4 });
-  expect(r.out.map((o) => o.msg)).toEqual([{ t: 'aim', seat: 0, angle: 0.5, power: 0.3, spinX: 0.2, spinY: -0.4 }]);
+  const r = run(s, 'a', { t: 'aim', angle: 0.5, power: 0.3, spinX: 0.2, spinY: -0.4, item: 'ice' });
+  expect(r.out.map((o) => o.msg)).toEqual([{ t: 'aim', seat: 0, angle: 0.5, power: 0.3, spinX: 0.2, spinY: -0.4, item: 'ice' }]);
 });
 
 test('reset: back to waiting, scores gone, dropped seats freed, spectators sit, newcomers sit', () => {
@@ -440,4 +440,17 @@ test('join: bola 8 only into an empty seat; in the waiting room you just sit; ki
   const back = run(w, 'c', { t: 'hello', playerId: pid('c'), name: 'c' });
   expect(errorsTo(back.out, 'c')).toEqual([]);
   expect(back.state!.spectators.some((x) => x.name === 'c')).toBe(true);
+});
+
+test('powers: the server only accepts a power the shooter has, and spends it', () => {
+  let s = run(roomOf('powers', 'a', 'b'), 'a', { t: 'start' }).state!;
+  const shot: Shot = { dx: 1, dy: 0, power: 0.3, spinX: 0, spinY: 0, item: 'bomb' };
+  expect(errorsTo(run(s, 'a', { t: 'shot', shotNo: s.shotNo, shot }).out, 'a')).toEqual(['bad_msg']);
+  s = { ...s, game: { ...s.game!, stock: [['bomb'], []] } as RoomState['game'] };
+  const r = run(s, 'a', { t: 'shot', shotNo: s.shotNo, shot });
+  expect(r.state!.phase).toBe('rolling');
+  const sim = simulate(r.state!.game!.balls, shot, undefined, SNOOKER);
+  s = run(r.state!, 'a', { t: 'result', shotNo: s.shotNo, final: sim.final, events: sim.events }).state!;
+  expect((s.game as { stock: string[][] }).stock[0]).toEqual([]);
+  expect(s.log.at(-1)).toMatch(/usou Bola explosiva/);
 });

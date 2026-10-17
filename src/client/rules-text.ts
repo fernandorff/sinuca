@@ -48,6 +48,18 @@ export const RULES: Record<Mode, { tagline: string; items: string[] }> = {
       'Acaba quando a mesa fica limpa; vence quem tiver mais pontos. Versão simplificada: sem "miss" e sem "free ball".',
     ],
   },
+  powers: {
+    tagline: 'O snooker de sempre, com poderes para guardar e usar na hora certa.',
+    items: [
+      'As regras são as do snooker (veja o modo Snooker).',
+      'Cada cor encaçapada sem falta dá um poder: amarela e rosa → Pontos em dobro; verde → Mesa de gelo; marrom → Caçapa gigante; azul e preta → Bola explosiva.',
+      'Na sua vez, toque num poder para usar nesta tacada (um por tacada). Ele é gasto mesmo se você errar.',
+      'Caçapa gigante: as caçapas ficam com o dobro do tamanho.',
+      'Bola explosiva: a primeira bola que a branca acertar empurra as que estão em volta.',
+      'Mesa de gelo: o atrito cai pela metade; as bolas deslizam bem mais.',
+      'Pontos em dobro: o que você encaçapar vale o dobro (falta não dobra).',
+    ],
+  },
 };
 
 export const CONTROLS = [

@@ -9,7 +9,7 @@ const SNOOKER_COLORS = ['#f4f1e8', '#c41e24', '#f2c230', '#1c7a43', '#6b3e1e', '
 // pool: lisas, listradas e número; sinuca e snooker: bolas lisas, sem número
 export function ballLook(mode: Mode, id: number): { color: string; stripe: boolean; label: string } {
   if (mode === 'sinuca') return { color: SNOOKER_COLORS[id], stripe: false, label: '' };
-  if (mode === 'snooker') return { color: SNOOKER_COLORS[id === 0 ? 0 : id <= 15 ? 1 : id - SNOOKER_COLOR_BASE], stripe: false, label: '' };
+  if (mode === 'snooker' || mode === 'powers') return { color: SNOOKER_COLORS[id === 0 ? 0 : id <= 15 ? 1 : id - SNOOKER_COLOR_BASE], stripe: false, label: '' };
   return { color: POOL_COLORS[id <= 8 ? id : id - 8], stripe: id >= 9, label: id > 0 ? String(id) : '' };
 }
 

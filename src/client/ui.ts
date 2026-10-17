@@ -3,6 +3,7 @@ import { MAX_SEATS, MODES, winnersOf, type GameState, type Mode } from '../share
 import { ballOn } from '../shared/rules/sinuca.ts';
 import { target, valueOf } from '../shared/rules/snooker.ts';
 import { COLOR_NAME } from '../shared/log.ts';
+import { ITEM_NAME, ITEMS, type Item } from '../shared/physics.ts';
 import { TIMER_OPTIONS } from '../shared/protocol.ts';
 import type { PublicRoom } from '../shared/room.ts';
 import { ballLook } from './look.ts';
@@ -121,6 +122,13 @@ export function toast(msg: string) {
 }
 
 const GROUP = { solids: 'lisas', stripes: 'listradas' };
+const ITEM_ICON: Record<Item, string> = { giant: '⭕', bomb: '💥', ice: '🧊', double: '✨' };
+const ITEM_HELP: Record<Item, string> = {
+  giant: 'Caçapas com o dobro do tamanho nesta tacada',
+  bomb: 'A primeira bola que a branca acertar empurra as que estão em volta',
+  ice: 'Atrito pela metade: as bolas deslizam bem mais',
+  double: 'O que você encaçapar nesta tacada vale o dobro',
+};
 // menu de expulsar aberto: continua aberto (com os votos atualizados) quando a mesa muda
 let kickOpen = false;
 // painel de jogadas aberto ou fechado: preferência de cada um, guardada no navegador
@@ -160,7 +168,7 @@ export function renderHud(
   animating: boolean,
   music: TrackId,
   musicVol: number,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void; timer(seconds: number): void; join(): void; admit(id: number): void },
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void; timer(seconds: number): void; join(): void; admit(id: number): void; arm(item: Item): void; armed(): Item | null },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
@@ -177,6 +185,27 @@ export function renderHud(
       { class: 'status join-box', role: 'status' },
       mine ? `${text} Pedido enviado: ${mine.votes} de ${joinNeed} votos.` : `${text} `,
       !mine && el('button', { type: 'button', class: 'primary', onclick: act.join }, you.kicked ? 'Pedir para voltar' : 'Pedir para entrar'),
+    );
+  };
+  // Snooker com poderes: os seus poderes, para escolher um antes de tacar (só na sua vez)
+  const powersRow = () => {
+    if (g?.mode !== 'snooker' || !g.stock || you.seat === null) return null;
+    const mine = g.stock[you.seat] ?? [];
+    const myTurn = room.phase === 'aiming' && !room.rolling && g.turn === you.seat;
+    const armed = act.armed();
+    return el(
+      'div',
+      { class: 'status powers' },
+      'Seus poderes:',
+      ...(mine.length
+        ? ITEMS.filter((i) => mine.includes(i)).map((i) =>
+            el(
+              'button',
+              { type: 'button', class: armed === i ? 'on' : '', disabled: !myTurn, 'aria-pressed': String(armed === i), title: ITEM_HELP[i], onclick: () => act.arm(i) },
+              `${ITEM_ICON[i]} ${ITEM_NAME[i]} ×${mine.filter((x) => x === i).length}`,
+            ),
+          )
+        : [el('span', { class: 'muted' }, 'encaçape uma cor para ganhar')]),
     );
   };
   // bloco da barra: título pequeno e os comandos lado a lado
@@ -235,6 +264,7 @@ export function renderHud(
       el('b', {}, s.name),
       group && el('small', {}, `${GROUP[group]} · faltam ${left(g!, group)}`),
       score !== null && el('span', { class: 'score' }, String(score)),
+      g?.mode === 'snooker' && g.stock && el('small', { class: 'stock', title: 'Poderes guardados' }, `⚡${g.stock[i]?.length ?? 0}`),
     );
   });
   const seated = room.seats.filter(Boolean).length;
@@ -308,6 +338,7 @@ export function renderHud(
     g && tray(room.mode, g),
     animating && el('button', { type: 'button', class: 'skip', onclick: act.skip }, 'Pular ⏭'),
     el('div', { class: 'status' }, status),
+    powersRow(),
     // votação aberta aparece para todos, não só no menu (pedido do Fernando, 17/10/2026)
     ...room.seats.flatMap((x, i) => {
       const votes = room.kickVotes?.[i] ?? 0;

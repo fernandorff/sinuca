@@ -65,8 +65,8 @@ test('accepts rerack', () => expect(parseClientMessage('{"t":"rerack"}')).toEqua
 
 test('aim carries spin and power; old clients without them get zeros', () => {
   const aim = (o: object) => parseClientMessage(JSON.stringify({ t: 'aim', angle: 1, ...o }));
-  expect(aim({ power: 0.4, spinX: 0.3, spinY: -0.5 })).toEqual({ t: 'aim', angle: 1, power: 0.4, spinX: 0.3, spinY: -0.5 });
-  expect(aim({})).toEqual({ t: 'aim', angle: 1, power: 0, spinX: 0, spinY: 0 });
+  expect(aim({ power: 0.4, spinX: 0.3, spinY: -0.5 })).toEqual({ t: 'aim', angle: 1, power: 0.4, spinX: 0.3, spinY: -0.5, item: null });
+  expect(aim({})).toEqual({ t: 'aim', angle: 1, power: 0, spinX: 0, spinY: 0, item: null });
   expect(aim({ spinX: 0.8, spinY: 0.8 })).toBeNull();
   expect(aim({ power: 2 })).toBeNull();
 });
@@ -81,4 +81,10 @@ test('timer: only the offered limits', () => {
   expect(parseClientMessage('{"t":"timer","seconds":30}')).toEqual({ t: 'timer', seconds: 30 });
   expect(parseClientMessage('{"t":"timer","seconds":0}')).toEqual({ t: 'timer', seconds: 0 });
   expect(parseClientMessage('{"t":"timer","seconds":7}')).toBeNull();
+});
+
+test('shot and aim carry an optional power from the list', () => {
+  expect(parseClientMessage(shot({ item: 'bomb' }))).toMatchObject({ t: 'shot', shot: { item: 'bomb' } });
+  expect(parseClientMessage(shot({ item: 'laser' }))).toBeNull();
+  expect(parseClientMessage(JSON.stringify({ t: 'aim', angle: 1, item: 'ice' }))).toMatchObject({ t: 'aim', item: 'ice' });
 });

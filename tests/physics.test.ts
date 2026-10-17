@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { HEAD_X, L, POCKETS, R, SNOOKER, W, rack, snookerRack, type BallPos } from '../src/shared/table.ts';
-import { simulate, type Body, type Shot } from '../src/shared/physics.ts';
+import { simulate, tableFor, type Body, type Shot } from '../src/shared/physics.ts';
+import { POOL } from '../src/shared/table.ts';
 
 const BREAK: Shot = { dx: 1, dy: 0, power: 1, spinX: 0, spinY: 0 };
 const IMPACT = 0.9 - 2 * R;
@@ -165,4 +166,40 @@ test('throw on a straight shot: english to the right sends the ball a little to 
   expect(objectDir(0.5, 0, 0).y).toBeCloseTo(0, 6);
   expect(objectDir(0.5, 1, 0).y).toBeLessThan(-0.02);
   expect(objectDir(0.5, -1, 0).y).toBeGreaterThan(0.02);
+});
+
+// poderes do modo Snooker com poderes que mudam a física de uma tacada
+test('items: every client computes exactly the same shot', () => {
+  for (const item of ['giant', 'bomb', 'ice'] as const) {
+    const shot: Shot = { ...BREAK, item };
+    expect(simulate(rack(), shot).final).toEqual(simulate(rack(), shot).final);
+  }
+});
+
+test('caçapa gigante: pockets twice as big for that shot', () => {
+  const t = tableFor(POOL, 'giant');
+  expect(t.pockets.map((p) => p.r)).toEqual(POOL.pockets.map((p) => p.r * 2));
+  expect(tableFor(POOL, undefined)).toBe(POOL);
+});
+
+test('mesa de gelo: the ball slides farther, and at full power it still stops', () => {
+  const one: BallPos[] = [{ id: 0, x: 0.5, y: W / 2, pocketed: false }];
+  const soft: Shot = { dx: 1, dy: 0, power: 0.05, spinX: 0, spinY: 0 };
+  const normal = simulate(one, soft).final[0].x;
+  const ice = simulate(one, { ...soft, item: 'ice' }).final[0].x;
+  expect(ice - 0.5).toBeGreaterThan((normal - 0.5) * 1.5);
+  expect(simulate(rack(), { ...BREAK, item: 'ice' }).steps).toBeLessThan(240 * 20);
+});
+
+test('bola explosiva: the ball the cue hits pushes the ones around it', () => {
+  const balls: BallPos[] = [
+    { id: 0, x: 0.5, y: W / 2, pocketed: false },
+    { id: 1, x: 1.2, y: W / 2, pocketed: false },
+    { id: 2, x: 1.2, y: W / 2 + 0.2, pocketed: false },
+  ];
+  const shot: Shot = { dx: 1, dy: 0, power: 0.3, spinX: 0, spinY: 0 };
+  const still = simulate(balls, shot).final.find((b) => b.id === 2)!;
+  expect(still.y).toBeCloseTo(W / 2 + 0.2, 6);
+  const pushed = simulate(balls, { ...shot, item: 'bomb' }).final.find((b) => b.id === 2)!;
+  expect(pushed.y - (W / 2 + 0.2)).toBeGreaterThan(0.05);
 });

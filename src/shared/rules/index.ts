@@ -1,12 +1,12 @@
 // Os quatro modos num lugar só: mesa, quantos jogadores podem começar e as regras.
-import type { SimEvent } from '../physics.ts';
+import type { Item, SimEvent } from '../physics.ts';
 import { POOL, SNOOKER, type BallPos, type Table } from '../table.ts';
 import { applyShot as applyEight, newGame as newEight, type EightState } from './eightball.ts';
 import { applyFree, newFree, type FreeState } from './free.ts';
 import { applySinuca, ballOn, newSinuca, type SinucaState } from './sinuca.ts';
 import { applySnooker, isRed, newSnooker, target, type SnookerState } from './snooker.ts';
 
-export type Mode = 'eightball' | 'free' | 'sinuca' | 'snooker';
+export type Mode = 'eightball' | 'free' | 'sinuca' | 'snooker' | 'powers';
 export type GameState = EightState | FreeState | SinucaState | SnookerState;
 
 // até 8 por mesa (pedido do Fernando, 17/10/2026); na bola 8, times iguais (lugar par contra ímpar)
@@ -17,6 +17,8 @@ export const MODES: Record<Mode, { label: string; table: Table; seats: number[] 
   free: { label: 'Mesa livre', table: POOL, seats: ANY },
   sinuca: { label: 'Sinuca brasileira', table: SNOOKER, seats: ANY },
   snooker: { label: 'Snooker', table: SNOOKER, seats: ANY },
+  // snooker de sempre com poderes guardados por jogador (modo separado, decisão do Fernando de 17/10/2026)
+  powers: { label: 'Snooker com poderes', table: SNOOKER, seats: ANY },
 };
 
 export const isMode = (m: unknown): m is Mode => typeof m === 'string' && m in MODES;
@@ -25,14 +27,15 @@ export function newGameFor(mode: Mode, seats: number, breakingSeat: number): Gam
   if (mode === 'eightball') return newEight(seats, breakingSeat);
   if (mode === 'free') return newFree(seats, breakingSeat);
   if (mode === 'sinuca') return newSinuca(seats, breakingSeat);
+  if (mode === 'powers') return { ...newSnooker(seats, breakingSeat), stock: Array.from({ length: seats }, () => []) };
   return newSnooker(seats, breakingSeat);
 }
 
-export function applyFor(g: GameState, final: BallPos[], events: SimEvent[]): GameState {
+export function applyFor(g: GameState, final: BallPos[], events: SimEvent[], item?: Item): GameState {
   if (g.mode === 'eightball') return applyEight(g, final, events);
   if (g.mode === 'free') return applyFree(g, final, events);
   if (g.mode === 'sinuca') return applySinuca(g, final, events);
-  return applySnooker(g, final, events);
+  return applySnooker(g, final, events, item);
 }
 
 // assentos vencedores, ou null se a partida não acabou (a mesa livre nunca acaba)

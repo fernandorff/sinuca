@@ -2,7 +2,11 @@
 // Seno, cosseno, atan2 e hypot ficam fora daqui: não arredondam igual em todos os navegadores.
 import { POOL, type BallPos, type Table } from './table.ts';
 
-export type Shot = { dx: number; dy: number; power: number; spinX: number; spinY: number };
+// poderes do modo Snooker com poderes (decisão do Fernando, 17/10/2026); cada um vale para uma tacada
+export type Item = 'giant' | 'bomb' | 'ice' | 'double';
+export const ITEMS: Item[] = ['giant', 'bomb', 'ice', 'double'];
+export const ITEM_NAME: Record<Item, string> = { giant: 'Caçapa gigante', bomb: 'Bola explosiva', ice: 'Mesa de gelo', double: 'Pontos em dobro' };
+export type Shot = { dx: number; dy: number; power: number; spinX: number; spinY: number; item?: Item };
 export type SimEvent =
   | { step: number; kind: 'hit'; a: number; b: number; v?: number }
   | { step: number; kind: 'cushion'; ball: number; v?: number }
@@ -32,6 +36,9 @@ export function simulate(
   onStep?: (bodies: Body[], step: number) => void,
   table: Table = POOL,
 ): { final: BallPos[]; events: SimEvent[]; frames: BallPos[][]; steps: number } {
+  table = tableFor(table, shot.item);
+  const ice = table.friction ?? 1;
+  let exploded = false;
   const bodies: Body[] = start.map((b) => ({ ...b, vx: 0, vy: 0, wx: 0, wy: 0, side: 0 }));
   const events: SimEvent[] = [];
   const frames: BallPos[][] = [];
@@ -54,12 +61,19 @@ export function simulate(
     let moving = false;
     for (const b of bodies) {
       if (b.pocketed) continue;
-      friction(b);
+      friction(b, ice);
       b.x += b.vx * DT;
       b.y += b.vy * DT;
       if (b.vx || b.vy || b.wx || b.wy) moving = true;
     }
     collideBalls(bodies, step, events, table.R);
+    if (shot.item === 'bomb' && !exploded) {
+      const hit = events.find((e) => e.kind === 'hit' && e.step === step && (e.a === 0 || e.b === 0));
+      if (hit?.kind === 'hit') {
+        exploded = true;
+        explode(bodies, hit.a === 0 ? hit.b : hit.a);
+      }
+    }
     for (const b of bodies) if (!b.pocketed) cushionsAndPockets(b, step, events, table);
     onStep?.(bodies, step);
     if (step % 4 === 0) frames.push(snap());
@@ -71,13 +85,40 @@ export function simulate(
   return { final, events, frames, steps: step };
 }
 
-function friction(b: Body) {
+// mesa: a mesa onde a tacada acontece, com o poder aplicado (caçapas dobradas ou atrito menor)
+export function tableFor(table: Table, item?: Item): Table {
+  if (item === 'giant') return { ...table, pockets: table.pockets.map((p) => ({ ...p, r: p.r * 2 })) };
+  if (item === 'ice') return { ...table, friction: 0.5 };
+  return table;
+}
+
+// bola explosiva: a bola que a branca acertou empurra as que estão em volta, mais forte quanto mais perto
+const BOMB_R = 0.4;
+const BOMB_V = 3;
+function explode(bodies: Body[], id: number) {
+  const c = bodies.find((b) => b.id === id);
+  if (!c) return;
+  for (const b of bodies) {
+    if (b === c || b.pocketed) continue;
+    const dx = b.x - c.x;
+    const dy = b.y - c.y;
+    const d = len(dx, dy);
+    if (d === 0 || d > BOMB_R) continue;
+    const k = (BOMB_V * (1 - d / BOMB_R)) / d;
+    b.vx += dx * k;
+    b.vy += dy * k;
+  }
+}
+
+function friction(b: Body, f: number) {
+  const muS = MU_S * f;
+  const muR = MU_R * f;
   const sx = b.vx - b.wx;
   const sy = b.vy - b.wy;
   const slip = len(sx, sy);
-  if (slip > 3.5 * MU_S * G * DT) {
+  if (slip > 3.5 * muS * G * DT) {
     // deslizando: o atrito freia a bola e transforma a diferença em giro
-    const k = (MU_S * G * DT) / slip;
+    const k = (muS * G * DT) / slip;
     b.vx -= sx * k;
     b.vy -= sy * k;
     b.wx += 2.5 * sx * k;
@@ -88,7 +129,7 @@ function friction(b: Body) {
     b.vy = b.wy = (5 * b.vy + 2 * b.wy) / 7;
   } else {
     const v = len(b.vx, b.vy);
-    const dv = MU_R * G * DT;
+    const dv = muR * G * DT;
     if (v <= dv || v < REST) {
       b.vx = b.vy = b.wx = b.wy = 0;
     } else {

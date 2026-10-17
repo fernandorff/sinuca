@@ -1,5 +1,5 @@
 // Mensagens entre o navegador e a mesa. A única validação do jogo fica aqui: formato e tamanho.
-import type { Shot, SimEvent } from './physics.ts';
+import { ITEMS, type Item, type Shot, type SimEvent } from './physics.ts';
 import type { PublicRoom } from './room.ts';
 import { MAX_SEATS } from './rules/index.ts';
 import type { BallPos } from './table.ts';
@@ -16,7 +16,7 @@ export type ClientMsg =
   | { t: 'join' }
   | { t: 'admit'; id: number }
   | { t: 'sit'; seat: number | null }
-  | { t: 'aim'; angle: number; power: number; spinX: number; spinY: number }
+  | { t: 'aim'; angle: number; power: number; spinX: number; spinY: number; item: Item | null }
   | { t: 'shot'; shotNo: number; shot: Shot; cue?: { x: number; y: number } }
   | { t: 'result'; shotNo: number; final: BallPos[]; events: SimEvent[] };
 
@@ -26,7 +26,7 @@ export type ServerMsg =
   // now = relógio do servidor no envio: cada tela acerta a contagem do tempo pela diferença com o próprio relógio
   | { t: 'state'; room: PublicRoom; you: { playerId: string; seat: number | null; voted: number[]; kicked: boolean; admitted: number[]; joinId: number | null }; now: number }
   | { t: 'shot'; shotNo: number; by: number; shot: Shot; balls: BallPos[] }
-  | { t: 'aim'; seat: number; angle: number; power: number; spinX: number; spinY: number }
+  | { t: 'aim'; seat: number; angle: number; power: number; spinX: number; spinY: number; item: Item | null }
   | { t: 'error'; code: ErrorCode; msg: string };
 
 // limites de tempo por jogada que a mesa oferece (0 = sem limite)
@@ -40,6 +40,7 @@ const MAX_ID = 21;
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isItem = (v: unknown): v is Item => ITEMS.includes(v as Item);
 const int = (v: unknown, min: number, max: number): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
 export function cleanName(raw: unknown): string {
@@ -49,11 +50,12 @@ export function cleanName(raw: unknown): string {
 
 function shot(v: unknown): Shot | null {
   if (!isObj(v)) return null;
-  const { dx, dy, power, spinX, spinY } = v;
+  const { dx, dy, power, spinX, spinY, item } = v;
   if (!num(dx) || !num(dy) || !num(power) || !num(spinX) || !num(spinY)) return null;
   const dir = Math.sqrt(dx * dx + dy * dy);
   if (dir < 0.999 || dir > 1.001 || power < 0 || power > 1 || spinX * spinX + spinY * spinY > 1) return null;
-  return { dx, dy, power, spinX, spinY };
+  if (item === undefined || item === null) return { dx, dy, power, spinX, spinY };
+  return isItem(item) ? { dx, dy, power, spinX, spinY, item } : null;
 }
 
 function ball(v: unknown): BallPos | null {
@@ -109,10 +111,10 @@ export function parseClientMessage(raw: string): ClientMsg | null {
       return m.seat === null || int(m.seat, 0, MAX_SEATS - 1) ? { t: 'sit', seat: m.seat as number | null } : null;
     case 'aim': {
       // força e efeito vão junto para os outros verem o ajuste ao vivo; cliente antigo sem eles manda zero
-      const { power = 0, spinX = 0, spinY = 0 } = m;
+      const { power = 0, spinX = 0, spinY = 0, item = null } = m;
       if (!num(m.angle) || !num(power) || !num(spinX) || !num(spinY)) return null;
-      if (power < 0 || power > 1 || spinX * spinX + spinY * spinY > 1) return null;
-      return { t: 'aim', angle: m.angle, power, spinX, spinY };
+      if (power < 0 || power > 1 || spinX * spinX + spinY * spinY > 1 || (item !== null && !isItem(item))) return null;
+      return { t: 'aim', angle: m.angle, power, spinX, spinY, item: item as Item | null };
     }
     case 'shot': {
       const s = shot(m.shot);

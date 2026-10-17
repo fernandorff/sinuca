@@ -151,3 +151,8 @@ body.in-room::after { content: ''; position: fixed; inset: 0; pointer-events: no
 .status.join-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .status.join-box button { min-height: 32px; padding: 4px 12px; font-size: .85rem; }
 .status.join-alert { background: rgba(30, 70, 110, .9); }
+/* Snooker com poderes: os seus poderes e o contador em cada jogador */
+.status.powers { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-weight: 500; }
+.status.powers button { min-height: 32px; padding: 4px 10px; font-size: .85rem; }
+.status.powers button.on { background: var(--wood); border-color: var(--chalk); color: #fff; }
+.seat .stock { font-size: .75rem; color: var(--muted); }

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { MODES, type Mode } from '../shared/rules/index.ts';
 import { predictAim, shotPreview } from '../shared/aim.ts';
+import type { Item } from '../shared/physics.ts';
 import { BAULK_X, D_R, type BallPos } from '../shared/table.ts';
 import { ballLook } from './look.ts';
 
@@ -369,7 +370,27 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       if (p) ring.position.copy(toScene(p.x, p.y)).setY(0.002);
     }
   }
-  let cueState = { visible: false, angle: 0, pull: 0, power: 0, spinX: 0, spinY: 0 };
+  let cueState: { visible: boolean; angle: number; pull: number; power: number; spinX: number; spinY: number; item: Item | null } = {
+    visible: false,
+    angle: 0,
+    pull: 0,
+    power: 0,
+    spinX: 0,
+    spinY: 0,
+    item: null,
+  };
+  // Caçapa gigante: anel dourado do tamanho novo em cada caçapa, na mira e durante a tacada (senão a bola
+  // parece sumir no pano a 5 cm do buraco)
+  const giantRings = new THREE.Group();
+  for (const p of pockets) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(p.r * 1.7, p.r * 2, 40), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.copy(toScene(p.x, p.y)).setY(0.004);
+    giantRings.add(ring);
+  }
+  giantRings.visible = false;
+  scene.add(giantRings);
+  let shotGiant = false;
   // o caminho da branca sai de uma simulação: só refaz quando a mira, a força, o efeito ou as bolas mudam
   let pathKey = '';
   let preview: ReturnType<typeof shotPreview> = null;
@@ -383,6 +404,7 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
 
   function placeCue() {
     const { visible, angle, pull } = cueState;
+    giantRings.visible = shotGiant || (visible && cueState.item === 'giant');
     const cue = last.get(0);
     stick.visible = aimLine.visible = visible && !!cue;
     ghost.visible = targetLine.visible = cueLine.visible = false;
@@ -412,12 +434,12 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       const t = last.get(aim.target)!;
       // com a força conhecida, as duas linhas saem da física (efeito e desvio inclusos); sem ela
       // (outro jogador num cliente antigo), a geometria do choque
-      const { power, spinX, spinY } = cueState;
+      const { power, spinX, spinY, item } = cueState;
       if (power > 0) {
-        const key = [dx, dy, power, spinX, spinY, cue.x, cue.y, t.x, t.y].join();
+        const key = [dx, dy, power, spinX, spinY, item, cue.x, cue.y, t.x, t.y].join();
         if (key !== pathKey) {
           pathKey = key;
-          preview = shotPreview(current, { dx, dy, power, spinX, spinY }, MODES[mode].table);
+          preview = shotPreview(current, { dx, dy, power, spinX, spinY, ...(item ? { item } : {}) }, MODES[mode].table);
         }
       } else {
         preview = null;
@@ -664,8 +686,13 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
       invalidate();
     },
     // power e efeito só servem para desenhar o caminho da branca depois do choque
-    setCue(visible: boolean, angle: number, pull: number, shot = { power: 0, spinX: 0, spinY: 0 }) {
-      cueState = { visible, angle, pull, ...shot };
+    setCue(visible: boolean, angle: number, pull: number, shot: { power: number; spinX: number; spinY: number; item?: Item | null } = { power: 0, spinX: 0, spinY: 0 }) {
+      cueState = { visible, angle, pull, power: shot.power, spinX: shot.spinX, spinY: shot.spinY, item: shot.item ?? null };
+      invalidate();
+    },
+    // anel da Caçapa gigante durante a tacada de quem usou
+    setShotGiant(on: boolean) {
+      shotGiant = on;
       invalidate();
     },
     setCamera(mode: 'aim' | 'top', angle?: number) {

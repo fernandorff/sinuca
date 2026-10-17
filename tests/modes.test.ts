@@ -3,7 +3,9 @@ import type { SimEvent } from '../src/shared/physics.ts';
 import { applyFree, newFree, type FreeState } from '../src/shared/rules/free.ts';
 import { applySinuca, newSinuca, type SinucaState } from '../src/shared/rules/sinuca.ts';
 import { applySnooker, newSnooker, type SnookerState } from '../src/shared/rules/snooker.ts';
-import { HEAD_X, inD } from '../src/shared/table.ts';
+import { HEAD_X, SNOOKER, inD } from '../src/shared/table.ts';
+import { MODES, newGameFor } from '../src/shared/rules/index.ts';
+import type { Item } from '../src/shared/physics.ts';
 
 const hit = (step: number, a: number, b: number): SimEvent => ({ step, kind: 'hit', a, b });
 const rail = (step: number, ball: number): SimEvent => ({ step, kind: 'cushion', ball });
@@ -187,4 +189,31 @@ test('foul with 3 or 4 players: the points are split among the others, the remai
   // sinuca, 3 jogadores, castigo de 7: 3 para cada um e 1 sai de quem errou
   const s = sin({ ...newSinuca(3, 0), isBreak: false, ballInHand: null }, [hit(1, 0, 6), rail(4, 6)]);
   expect(s.scores).toEqual([-1, 3, 3]);
+});
+
+// Snooker com poderes
+const pw = (seats = 2): SnookerState => ({ ...(newGameFor('powers', seats, 0) as SnookerState), isBreak: false, ballInHand: null });
+const pwShot = (s: SnookerState, ev: SimEvent[], item?: Item) => applySnooker(s, finalOf(s, ev), ev, item);
+
+test('powers: a snooker table for 1 to 8 players; plain snooker has no stock', () => {
+  expect(MODES.powers.table).toBe(SNOOKER);
+  expect(pw(3).stock).toEqual([[], [], []]);
+  expect((newGameFor('snooker', 2, 0) as SnookerState).stock).toBeUndefined();
+});
+
+test('powers: each colour potted earns its power (blue → bola explosiva); reds earn nothing', () => {
+  let s = pwShot({ ...pw(), onColor: true }, [hit(1, 0, 19), pot(5, 19)]);
+  expect(s.stock).toEqual([['bomb'], []]);
+  s = pwShot(s, [hit(1, 0, 3), pot(5, 3)]);
+  expect(s.stock).toEqual([['bomb'], []]);
+});
+
+test('powers: using a power spends it; pontos em dobro doubles what you pot, not the fouls', () => {
+  let s = pwShot({ ...pw(), stock: [['double', 'double'], []] }, [hit(1, 0, 3), pot(5, 3)], 'double');
+  expect(s.scores).toEqual([2, 0]);
+  expect(s.stock).toEqual([['double'], []]);
+  // falta (bateu numa cor com vermelha na vez): 4 para o outro, não 8; o poder foi gasto do mesmo jeito
+  s = pwShot({ ...s, onColor: false }, [hit(1, 0, 16), rail(4, 16)], 'double');
+  expect(s.scores).toEqual([2, 4]);
+  expect(s.stock).toEqual([[], []]);
 });

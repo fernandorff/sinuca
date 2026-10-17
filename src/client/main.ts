@@ -1,4 +1,4 @@
-import { simulate } from '../shared/physics.ts';
+import { ITEM_NAME, simulate, type Item } from '../shared/physics.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { MODES, highlightIds, newGameFor, type Mode } from '../shared/rules/index.ts';
 import { cueOk, type PublicRoom } from '../shared/room.ts';
@@ -221,6 +221,11 @@ function startRoom(id: string, name: string) {
     },
     stopVideo: () => net.send({ t: 'video', id: null }),
     timer: (seconds: number) => net.send({ t: 'timer', seconds }),
+    arm(item: Item) {
+      view?.controls.setItem(item);
+      draw();
+    },
+    armed: () => view?.controls.item ?? null,
     join: () => net.send({ t: 'join' }),
     admit: (id: number) => net.send({ t: 'admit', id }),
     videoMini: () => videoMini,
@@ -324,6 +329,9 @@ function startRoom(id: string, name: string) {
     controls.enable(null);
     // a mira de quem tacou some: senão o taco e as linhas seguem a bola durante a animação
     controls.hideRemote();
+    // poder usado: todo mundo fica sabendo, e a Caçapa gigante mostra o anel durante a tacada
+    scene.setShotGiant(m.shot.item === 'giant');
+    if (m.shot.item) banner(`${room.seats[m.by]?.name ?? 'Alguém'} usou ${ITEM_NAME[m.shot.item]}!`, 'good');
     scene.setHighlight([]);
     status = `${room.seats[m.by]?.name ?? 'Alguém'} tacou.`;
     draw();
@@ -359,6 +367,7 @@ function startRoom(id: string, name: string) {
       if (i < sim.frames.length - 1) return requestAnimationFrame(frame);
       animating = false;
       scene.follow(null);
+      scene.setShotGiant(false);
       const next = queued ?? room;
       queued = null;
       if (next) applyState(next);
