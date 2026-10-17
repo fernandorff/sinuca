@@ -30,8 +30,8 @@ function client(path, playerId, name) {
       const seen = msgs.find(pred);
       if (seen) return Promise.resolve(seen);
       return new Promise((resolve) => {
-        waiters.push({ pred, resolve });
-        setTimeout(() => fail('timeout waiting for ' + label), ms);
+        const timer = setTimeout(() => fail('timeout waiting for ' + label), ms);
+        waiters.push({ pred, resolve: (v) => { clearTimeout(timer); resolve(v); } });
       });
     },
   };
