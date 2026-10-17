@@ -99,6 +99,9 @@ function startRoom(id: string, name: string) {
   const music = createMusic();
   const saved = store.get('sinuca:music');
   let musicId: TrackId = TRACKS.some((t) => t.id === saved) ? (saved as TrackId) : 'off';
+  const savedVol = Number(store.get('sinuca:musicVol'));
+  let musicVol = savedVol >= 0 && savedVol <= 1 && store.get('sinuca:musicVol') !== null ? savedVol : 0.4;
+  music.setVolume(musicVol);
   window.addEventListener('pointerdown', () => musicId !== 'off' && music.play(musicId), { once: true });
 
   // a cena depende da mesa do modo, que só se sabe quando chega o primeiro estado
@@ -120,6 +123,19 @@ function startRoom(id: string, name: string) {
       },
     });
     return (view = { scene, controls });
+  }
+
+  // versão nova publicada: recarrega sozinho fora da animação (a partida fica no servidor, nada se perde).
+  // Uma aba com a versão velha recebendo dados da nova pode quebrar a tela (aconteceu em 17/10/2026)
+  const myBundle = [...document.scripts].map((s) => s.src).find((src) => /\/assets\/index-[^/]+\.js$/.test(src));
+  if (myBundle) {
+    setInterval(async () => {
+      if (animating) return;
+      try {
+        const live = (await (await fetch('/', { cache: 'no-store' })).text()).match(/\/assets\/index-[^"']+\.js/)?.[0];
+        if (live && !myBundle.endsWith(live)) location.reload();
+      } catch {}
+    }, 60_000);
   }
 
   // Espaço durante a tacada pula a animação (na sua vez, Espaço taca: isso fica nos controles)
@@ -149,6 +165,11 @@ function startRoom(id: string, name: string) {
       if (room?.phase === 'over' || confirm('Começar uma nova partida? O placar zera e a mesa volta para a espera, para entrar mais gente.')) net.send({ t: 'reset' });
     },
     skip: () => (skip = skippable),
+    musicVolume(v: number) {
+      musicVol = v;
+      store.set('sinuca:musicVol', String(v));
+      music.setVolume(v);
+    },
     music(id: TrackId) {
       musicId = id;
       store.set('sinuca:music', id);
@@ -173,7 +194,7 @@ function startRoom(id: string, name: string) {
   };
 
   function draw() {
-    if (room) renderHud(hud, room, you, online, status, muted, animating && skippable, musicId, act);
+    if (room) renderHud(hud, room, you, online, status, muted, animating && skippable, musicId, musicVol, act);
   }
 
   function show(balls: BallPos[]) {
@@ -239,6 +260,8 @@ function startRoom(id: string, name: string) {
     skip = false;
     skippable = !sim.events.some((e) => e.kind === 'pocket');
     controls.enable(null);
+    // a mira de quem tacou some: senão o taco e as linhas seguem a bola durante a animação
+    controls.hideRemote();
     scene.setHighlight([]);
     status = `${room.seats[m.by]?.name ?? 'Alguém'} tacou.`;
     draw();
@@ -303,7 +326,7 @@ function startRoom(id: string, name: string) {
       else applyState(m.room);
     } else if (m.t === 'shot') animate(m);
     else if (m.t === 'aim') {
-      if (m.seat !== you.seat) view?.controls.showAim(m);
+      if (m.seat !== you.seat && !animating) view?.controls.showAim(m);
     } else if (m.code === 'not_found') {
       net.stop();
       screen(ui, 'Mesa não encontrada', 'Confira o link ou crie uma mesa nova no lobby.', 'Ir para o lobby', act.lobby);

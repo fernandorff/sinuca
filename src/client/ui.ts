@@ -120,6 +120,8 @@ export function toast(msg: string) {
 }
 
 const GROUP = { solids: 'lisas', stripes: 'listradas' };
+// menu de expulsar aberto: continua aberto (com os votos atualizados) quando a mesa muda
+let kickOpen = false;
 // painel de jogadas aberto ou fechado: preferência de cada um, guardada no navegador
 let logOpen = (() => {
   try {
@@ -156,23 +158,49 @@ export function renderHud(
   muted: boolean,
   animating: boolean,
   music: TrackId,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void },
+  musicVol: number,
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
   const teams = room.mode === 'eightball';
   const seatCount = g ? g.seats : MAX_SEATS;
-  // votar para expulsar: quem está sentado vê o botão nos outros, com votos/necessários
-  const kickButton = (i: number, name: string) => {
-    if (you.seat === null || i === you.seat) return null;
-    const votes = room.kickVotes?.[i] ?? 0;
-    const need = Math.floor(room.seats.filter((x, j) => x?.connected && j !== i).length / 2) + 1;
-    const mine = you.voted.includes(i);
-    return el(
-      'button',
-      { type: 'button', class: `kick${mine ? ' on' : ''}`, title: mine ? 'Tirar meu voto' : 'Votar para expulsar', 'aria-pressed': String(mine), onclick: () => act.kick(i, name, !mine && votes + 1 >= need) },
-      `✕ ${votes}/${need}`,
+  const again = () => renderHud(root, room, you, online, status, muted, animating, music, musicVol, act);
+  // votar para expulsar, num menu em janela (pedido do Fernando, 17/10/2026): uma linha por jogador, com votos/necessários
+  const others = you.seat === null ? [] : room.seats.flatMap((x, i) => (x && i !== you.seat ? [{ i, name: x.name }] : []));
+  const kickMenu = () => {
+    const close = () => {
+      kickOpen = false;
+      again();
+    };
+    const overlay: HTMLElement = el(
+      'div',
+      { class: 'overlay', onclick: (e: Event) => e.target === overlay && close() },
+      el(
+        'div',
+        { class: 'panel kick-menu', role: 'dialog', 'aria-label': 'Votar para expulsar' },
+        el('h2', {}, 'Votar para expulsar'),
+        el('p', { class: 'muted' }, 'Sai quem tiver votos de mais da metade dos outros jogadores. Quem sai não volta nesta mesa e a vez dele é pulada.'),
+        el(
+          'ul',
+          {},
+          ...others.map(({ i, name }) => {
+            const votes = room.kickVotes?.[i] ?? 0;
+            const need = Math.floor(room.seats.filter((x, j) => x?.connected && j !== i).length / 2) + 1;
+            const mine = you.voted.includes(i);
+            return el(
+              'li',
+              {},
+              el('b', {}, name),
+              el('span', { class: 'muted' }, `${votes}/${need} votos`),
+              el('button', { type: 'button', class: mine ? 'on' : '', 'aria-pressed': String(mine), onclick: () => act.kick(i, name, !mine && votes + 1 >= need) }, mine ? 'Tirar voto' : 'Votar'),
+            );
+          }),
+        ),
+        el('button', { type: 'button', class: 'primary', onclick: close }, 'Fechar'),
+      ),
     );
+    return overlay;
   };
   const seats = room.seats.slice(0, seatCount).map((s, i) => {
     const team = teams ? ` team-${i % 2}` : '';
@@ -180,7 +208,9 @@ export function renderHud(
     const score = g && 'scores' in g ? g.scores[i] : null;
     const turn = g && !room.rolling && room.phase === 'aiming' && g.turn === i;
     if (!s) {
-      return el('li', { class: `seat empty${team}` }, waiting && you.seat !== i ? el('button', { type: 'button', onclick: () => act.sit(i) }, 'Sentar aqui') : 'livre');
+      // na partida, lugar vazio (de quem foi expulso) não aparece; na espera, é onde alguém senta
+      if (!waiting) return null;
+      return el('li', { class: `seat empty${team}` }, you.seat !== i ? el('button', { type: 'button', onclick: () => act.sit(i) }, 'Sentar aqui') : 'livre');
     }
     return el(
       'li',
@@ -189,7 +219,6 @@ export function renderHud(
       el('b', {}, s.name),
       group && el('small', {}, `${GROUP[group]} · faltam ${left(g!, group)}`),
       score !== null && el('span', { class: 'score' }, String(score)),
-      kickButton(i, s.name),
     );
   });
   const seated = room.seats.filter(Boolean).length;
@@ -219,17 +248,31 @@ export function renderHud(
             try {
               localStorage.setItem('sinuca:log', logOpen ? '1' : '0');
             } catch {}
-            renderHud(root, room, you, online, status, muted, animating, music, act);
+            again();
           },
         },
         'Jogadas',
       ),
+      others.length > 0 &&
+        el(
+          'button',
+          {
+            type: 'button',
+            class: 'link',
+            onclick: () => {
+              kickOpen = true;
+              again();
+            },
+          },
+          'Expulsar',
+        ),
       !waiting && you.seat !== null && el('button', { type: 'button', class: 'link', onclick: act.reset, title: 'Volta para a espera: o placar zera e entra quem quiser' }, 'Nova partida'),
       el(
         'label',
         { class: 'music' },
         'Música ',
         el('select', { onchange: (e: Event) => act.music((e.target as HTMLSelectElement).value as TrackId) }, ...TRACKS.map((t) => el('option', { value: t.id, selected: t.id === music }, t.label))),
+        el('input', { type: 'range', min: '0', max: '100', value: String(Math.round(musicVol * 100)), 'aria-label': 'Volume da música', title: 'Volume da música', oninput: (e: Event) => act.musicVolume(Number((e.target as HTMLInputElement).value) / 100) }),
       ),
     ),
     el('div', { class: 'mode-name' }, MODES[room.mode].label),
@@ -264,6 +307,7 @@ export function renderHud(
         you.seat !== null && el('button', { type: 'button', onclick: act.reset }, 'Nova partida (abrir lugares)'),
       ),
     you.seat === null && !waiting && el('div', { class: 'badge' }, 'assistindo'),
+    kickOpen && others.length > 0 && kickMenu(),
   ].filter((c): c is HTMLElement => !!c));
 }
 

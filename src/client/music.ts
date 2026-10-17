@@ -76,12 +76,14 @@ export function createMusic() {
   let nextAt = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
   let crackle: AudioBufferSourceNode | null = null;
+  // volume de 0 a 1; 0,4 é o volume de antes (ganho 0,16), então dá para subir até 2,5 vezes
+  let volume = 0.4;
 
   function ensure() {
     if (ctx) return ctx;
     ctx = new AudioContext();
     master = ctx.createGain();
-    master.gain.value = 0.16;
+    master.gain.value = volume * 0.4;
     master.connect(ctx.destination);
     noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noise.getChannelData(0);
@@ -161,6 +163,10 @@ export function createMusic() {
   }
 
   return {
+    setVolume(v: number) {
+      volume = v;
+      if (master) master.gain.value = v * 0.4;
+    },
     // precisa vir de um toque ou clique (regra do navegador para áudio)
     play(id: TrackId) {
       stop();

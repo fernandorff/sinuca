@@ -275,6 +275,9 @@ export function createControls(
         requestAnimationFrame(stepRemote);
       }
     },
+    hideRemote() {
+      remoteShown = null;
+    },
     get camMode() {
       return camMode;
     },
