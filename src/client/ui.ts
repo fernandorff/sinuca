@@ -159,7 +159,7 @@ export function renderHud(
   animating: boolean,
   music: TrackId,
   musicVol: number,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void },
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
@@ -253,6 +253,9 @@ export function renderHud(
         },
         'Jogadas',
       ),
+      el('button', { type: 'button', class: 'link', onclick: act.video, title: 'Toca para a mesa toda; substitui o que estiver tocando' }, room.video ? 'Trocar vídeo' : 'Colocar vídeo'),
+      room.video && el('button', { type: 'button', class: 'link', onclick: act.stopVideo, title: `Colocado por ${room.video.by}` }, 'Tirar vídeo'),
+      room.video && el('button', { type: 'button', class: 'link', onclick: act.toggleVideo }, act.videoMini() ? 'Mostrar vídeo' : 'Esconder vídeo'),
       others.length > 0 &&
         el(
           'button',

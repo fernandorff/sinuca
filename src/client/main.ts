@@ -9,6 +9,7 @@ import { createScene } from './scene.ts';
 import { createMusic, TRACKS, type TrackId } from './music.ts';
 import { createSound } from './sound.ts';
 import { askName, banner, el, renderHud, renderLobby, screen, toast, type RoomInfo } from './ui.ts';
+import { createVideo, videoId } from './youtube.ts';
 
 // localStorage pode falhar (aba anônima, dados bloqueados): cai para a memória
 const memory = new Map<string, string>();
@@ -79,7 +80,13 @@ function startRoom(id: string, name: string) {
   document.body.className = 'in-room';
   const hud = el('div', { class: 'hud' });
   const ctl = el('div', { class: 'controls off' });
-  ui.replaceChildren(hud, ctl);
+  // vídeo do YouTube da mesa: fica fora do HUD para não ser recriado a cada atualização
+  const videoBox = el('div', { class: 'video-box', hidden: true });
+  let videoMini = store.get('sinuca:videoMini') === '1';
+  videoBox.classList.toggle('mini', videoMini);
+  ui.replaceChildren(hud, ctl, videoBox);
+  const video = createVideo(videoBox);
+  let videoPlaying = false;
 
   let room: PublicRoom | null = null;
   let you: { playerId: string; seat: number | null; voted: number[] } = { playerId, seat: null, voted: [] };
@@ -102,7 +109,8 @@ function startRoom(id: string, name: string) {
   const savedVol = Number(store.get('sinuca:musicVol'));
   let musicVol = savedVol >= 0 && savedVol <= 1 && store.get('sinuca:musicVol') !== null ? savedVol : 0.4;
   music.setVolume(musicVol);
-  window.addEventListener('pointerdown', () => musicId !== 'off' && music.play(musicId), { once: true });
+  video.setVolume(musicVol);
+  window.addEventListener('pointerdown', () => musicId !== 'off' && !videoPlaying && music.play(musicId), { once: true });
 
   // a cena depende da mesa do modo, que só se sabe quando chega o primeiro estado
   let view: { scene: ReturnType<typeof createScene>; controls: ReturnType<typeof createControls> } | null = null;
@@ -169,11 +177,28 @@ function startRoom(id: string, name: string) {
       musicVol = v;
       store.set('sinuca:musicVol', String(v));
       music.setVolume(v);
+      video.setVolume(v);
     },
     music(id: TrackId) {
       musicId = id;
       store.set('sinuca:music', id);
-      music.play(id);
+      // com vídeo tocando, a música da mesa volta quando o vídeo sair
+      if (!videoPlaying) music.play(id);
+      draw();
+    },
+    video() {
+      const link = prompt('Cole o link do vídeo do YouTube (toca para a mesa toda):');
+      if (!link) return;
+      const id = videoId(link);
+      if (id) net.send({ t: 'video', id });
+      else toast('Não reconheci esse link do YouTube.');
+    },
+    stopVideo: () => net.send({ t: 'video', id: null }),
+    videoMini: () => videoMini,
+    toggleVideo() {
+      videoMini = !videoMini;
+      store.set('sinuca:videoMini', videoMini ? '1' : '0');
+      videoBox.classList.toggle('mini', videoMini);
       draw();
     },
     lobby: () => (location.hash = ''),
@@ -194,7 +219,15 @@ function startRoom(id: string, name: string) {
   };
 
   function draw() {
-    if (room) renderHud(hud, room, you, online, status, muted, animating && skippable, musicId, musicVol, act);
+    if (!room) return;
+    // vídeo entrando pausa a música gerada; saindo, ela volta
+    void video.show(room.video ?? null);
+    const on = !!room.video;
+    if (on !== videoPlaying) {
+      videoPlaying = on;
+      music.play(on ? 'off' : musicId);
+    }
+    renderHud(hud, room, you, online, status, muted, animating && skippable, musicId, musicVol, act);
   }
 
   function show(balls: BallPos[]) {

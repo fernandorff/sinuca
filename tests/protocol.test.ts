@@ -70,3 +70,9 @@ test('aim carries spin and power; old clients without them get zeros', () => {
   expect(aim({ spinX: 0.8, spinY: 0.8 })).toBeNull();
   expect(aim({ power: 2 })).toBeNull();
 });
+
+test('video: an 11-character YouTube id or null', () => {
+  expect(parseClientMessage('{"t":"video","id":"dQw4w9WgXcQ"}')).toEqual({ t: 'video', id: 'dQw4w9WgXcQ' });
+  expect(parseClientMessage('{"t":"video","id":null}')).toEqual({ t: 'video', id: null });
+  expect(parseClientMessage('{"t":"video","id":"<script>"}')).toBeNull();
+});

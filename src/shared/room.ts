@@ -24,6 +24,8 @@ export type RoomState = {
   // voto para expulsar (pedido do Fernando, 17/10/2026): quem votou em quem, e quem já foi expulso desta mesa
   kick?: { target: string; voters: string[] }[];
   kicked?: string[];
+  // vídeo do YouTube que a mesa toda ouve: um por vez, qualquer um troca ou tira (pedido do Fernando, 17/10/2026)
+  video?: { id: string; by: string; startedAt: number } | null;
   pending: {
     shotNo: number;
     by: number;
@@ -35,7 +37,8 @@ export type RoomState = {
     fallback: { final: BallPos[]; events: SimEvent[] } | null;
   } | null;
 };
-export type PublicRoom = Omit<RoomState, 'pending' | 'seats' | 'spectators' | 'kick' | 'kicked'> & {
+export type PublicRoom = Omit<RoomState, 'pending' | 'seats' | 'spectators' | 'kick' | 'kicked' | 'video'> & {
+  video: { id: string; by: string; startedAt: number } | null;
   seats: ({ name: string; connected: boolean } | null)[];
   // votos válidos para expulsar cada assento
   kickVotes: number[];
@@ -69,9 +72,10 @@ const votersOf = (s: RoomState, target: string) =>
 const kickNeed = (s: RoomState, target: string) => Math.floor(s.seats.filter((x) => x?.connected && x.playerId !== target).length / 2) + 1;
 
 export function publicRoom(s: RoomState): PublicRoom {
-  const { pending, seats, spectators, kick, kicked, ...rest } = s;
+  const { pending, seats, spectators, kick, kicked, video, ...rest } = s;
   return {
     ...rest,
+    video: video ?? null,
     kickVotes: seats.map((x) => (x ? votersOf(s, x.playerId).length : 0)),
     seats: seats.map((x) => (x ? { name: x.name, connected: x.connected } : null)),
     spectators: spectators.map((x) => ({ name: x.name })),
@@ -250,6 +254,13 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
       const r = changed(out);
       r.out.push({ to: target.playerId, msg: { t: 'error', code: 'kicked', msg: ERRORS.kicked } });
       return r;
+    }
+
+    case 'video': {
+      const name = s.seats.find((x) => x?.playerId === playerId)?.name ?? s.spectators.find((x) => x.playerId === playerId)?.name;
+      if (!name) return fail(s, playerId, 'bad_msg');
+      const video = msg.id ? { id: msg.id, by: name, startedAt: now } : null;
+      return changed(withLog({ ...s, video }, video ? `${name} colocou um vídeo` : `${name} tirou o vídeo`));
     }
 
     // mesa livre: qualquer um sentado arruma as bolas de novo

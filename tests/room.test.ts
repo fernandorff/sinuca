@@ -357,3 +357,16 @@ test('kicked mid-game: their turn is skipped, now and on the next shots', () => 
   s = shoot(s, 'a');
   expect(s.game!.turn).toBe(2);
 });
+
+test('video: anyone in the room puts one on or takes it off; one at a time', () => {
+  let s = started('a', 'b');
+  s = run(s, 'c', { t: 'hello', playerId: pid('c'), name: 'c' }).state!;
+  s = run(s, 'c', { t: 'video', id: 'dQw4w9WgXcQ' }, 5000).state!;
+  expect(publicRoom(s).video).toEqual({ id: 'dQw4w9WgXcQ', by: 'c', startedAt: 5000 });
+  s = run(s, 'a', { t: 'video', id: 'aaaaaaaaaaa' }, 9000).state!;
+  expect(publicRoom(s).video).toEqual({ id: 'aaaaaaaaaaa', by: 'a', startedAt: 9000 });
+  expect(s.log.at(-1)).toBe('a colocou um vídeo');
+  s = run(s, 'b', { t: 'video', id: null }).state!;
+  expect(publicRoom(s).video).toBeNull();
+  expect(s.log.at(-1)).toBe('b tirou o vídeo');
+});
