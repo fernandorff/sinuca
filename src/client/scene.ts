@@ -94,11 +94,39 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   Object.assign(lamp.shadow.camera, { left: -L / 2 - 0.3, right: L / 2 + 0.3, top: W / 2 + 0.3, bottom: -W / 2 - 0.3, near: 1, far: 5 });
   scene.add(lamp);
 
-  // mesa: feltro, tabelas entre as caçapas, moldura de madeira e caçapas
-  const felt = new THREE.Mesh(new THREE.PlaneGeometry(L + 2 * CUSHION_W, W + 2 * CUSHION_W), new THREE.MeshStandardMaterial({ color: FELT, roughness: 0.95 }));
+  // caçapas: furo de verdade no pano, inteiro dentro do feltro, com uma caçapa funda embaixo.
+  // O desenho fica um pouco para dentro do centro de captura da física; a bola rola até ele e cai.
+  const edgeX = L / 2 + CUSHION_W;
+  const edgeZ = W / 2 + CUSHION_W;
+  const holes = pockets.map((p, i) => {
+    const sx = Math.sign(p.x - L / 2);
+    const sz = Math.sign(p.y - W / 2);
+    return { x: i < 4 ? sx * (edgeX - p.r * 1.02) : 0, z: sz * (edgeZ - p.r * 1.02), r: p.r, count: 0 };
+  });
+  const POCKET_DEPTH = 0.13;
+
+  // mesa: feltro com os furos, tabelas entre as caçapas, moldura de madeira
+  const feltShape = new THREE.Shape();
+  feltShape.moveTo(-edgeX, -edgeZ);
+  feltShape.lineTo(edgeX, -edgeZ);
+  feltShape.lineTo(edgeX, edgeZ);
+  feltShape.lineTo(-edgeX, edgeZ);
+  feltShape.closePath();
+  // o pano é desenhado deitado (rotação −90° em x): o z da cena vira −y da forma
+  for (const h of holes) feltShape.holes.push(new THREE.Path().absarc(h.x, -h.z, h.r, 0, Math.PI * 2, true));
+  const felt = new THREE.Mesh(new THREE.ShapeGeometry(feltShape, 48), new THREE.MeshStandardMaterial({ color: FELT, roughness: 0.95 }));
   felt.rotation.x = -Math.PI / 2;
   felt.receiveShadow = true;
   scene.add(felt);
+  const cupMat = new THREE.MeshStandardMaterial({ color: '#0b0907', roughness: 1, side: THREE.DoubleSide });
+  for (const h of holes) {
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(h.r, h.r * 0.92, POCKET_DEPTH, 32, 1, true), cupMat);
+    cup.position.set(h.x, -POCKET_DEPTH / 2, h.z);
+    const bottom = new THREE.Mesh(new THREE.CircleGeometry(h.r * 0.92, 32), cupMat);
+    bottom.rotation.x = -Math.PI / 2;
+    bottom.position.set(h.x, -POCKET_DEPTH, h.z);
+    scene.add(cup, bottom);
+  }
 
   const cushionMat = new THREE.MeshStandardMaterial({ color: CUSHION, roughness: 0.9 });
   const woodMat = new THREE.MeshStandardMaterial({ color: WOOD, roughness: 0.55 });
@@ -119,29 +147,20 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   for (const x of [-(L / 2 + CUSHION_W / 2), L / 2 + CUSHION_W / 2]) box(CUSHION_W, RAIL_H, W - 2 * corner, x, RAIL_H / 2, 0, cushionMat);
   const outerL = L + 2 * CUSHION_W + 2 * FRAME_W;
   const outerW = W + 2 * CUSHION_W + 2 * FRAME_W;
-  for (const z of [-(outerW / 2 - FRAME_W / 2), outerW / 2 - FRAME_W / 2]) box(outerL, RAIL_H + 0.01, FRAME_W, 0, (RAIL_H + 0.01) / 2, z, woodMat);
-  for (const x of [-(outerL / 2 - FRAME_W / 2), outerL / 2 - FRAME_W / 2]) box(FRAME_W, RAIL_H + 0.01, outerW - 2 * FRAME_W, x, (RAIL_H + 0.01) / 2, 0, woodMat);
-  box(outerL + 0.04, 0.6, outerW + 0.04, 0, -0.302, 0, woodMat);
-  // caçapas: o buraco fica no pano verde, inteiro dentro da área do feltro (não em cima da madeira).
-  // O desenho fica um pouco para dentro do centro de captura da física; a bola cai dentro dele.
-  const pocketMat = new THREE.MeshBasicMaterial({ color: '#030303' });
-  const lipMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.45, depthWrite: false });
-  const edgeX = L / 2 + CUSHION_W;
-  const edgeZ = W / 2 + CUSHION_W;
-  pockets.forEach((p, i) => {
-    const sx = Math.sign(p.x - L / 2);
-    const sz = Math.sign(p.y - W / 2);
-    const x = i < 4 ? sx * (edgeX - p.r * 0.8) : 0;
-    const z = sz * (edgeZ - p.r * (i < 4 ? 0.8 : 1));
-    const hole = new THREE.Mesh(new THREE.CircleGeometry(p.r, 40), pocketMat);
-    hole.rotation.x = -Math.PI / 2;
-    hole.position.set(x, 0.0016, z);
-    // sombra na boca da caçapa
-    const lip = new THREE.Mesh(new THREE.RingGeometry(p.r, p.r * 1.22, 40), lipMat);
+  // a moldura desce como uma saia, escondendo o vão embaixo do pano onde ficam as caçapas
+  const frameH = RAIL_H + 0.01 + POCKET_DEPTH + 0.03;
+  const frameY = RAIL_H + 0.01 - frameH / 2;
+  for (const z of [-(outerW / 2 - FRAME_W / 2), outerW / 2 - FRAME_W / 2]) box(outerL, frameH, FRAME_W, 0, frameY, z, woodMat);
+  for (const x of [-(outerL / 2 - FRAME_W / 2), outerL / 2 - FRAME_W / 2]) box(FRAME_W, frameH, outerW - 2 * FRAME_W, x, frameY, 0, woodMat);
+  box(outerL + 0.04, 0.5, outerW + 0.04, 0, -(POCKET_DEPTH + 0.02) - 0.25, 0, woodMat);
+  // sombra suave na boca de cada caçapa
+  const lipMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.4, depthWrite: false });
+  for (const h of holes) {
+    const lip = new THREE.Mesh(new THREE.RingGeometry(h.r, h.r * 1.2, 40), lipMat);
     lip.rotation.x = -Math.PI / 2;
-    lip.position.set(x, 0.0012, z);
-    scene.add(hole, lip);
-  });
+    lip.position.set(h.x, 0.0012, h.z);
+    scene.add(lip);
+  }
   // diamantes de madrepérola na moldura: 3 entre cada par de caçapas
   const pearl = new THREE.MeshStandardMaterial({ color: '#efe7d2', roughness: 0.25, metalness: 0.1 });
   const diamond = new THREE.CircleGeometry(0.009, 4);
@@ -330,8 +349,16 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   let low = false;
   let frames: number[] = [];
   const invalidate = () => (dirty = true);
+  // efeitos com duração (queda na caçapa, brilho, taco batendo): cada um devolve false quando acaba
+  const effects: ((now: number) => boolean)[] = [];
+  let shakeAmp = 0;
   function loop(t: number) {
     requestAnimationFrame(loop);
+    if (effects.length) {
+      for (let i = effects.length - 1; i >= 0; i--) if (!effects[i](t)) effects.splice(i, 1);
+      dirty = true;
+    }
+    if (shakeAmp > 0.0004) dirty = true;
     if (!dirty) {
       frames = [];
       return;
@@ -339,6 +366,11 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     dirty = false;
     placeCue();
     placeCamera();
+    if (shakeAmp > 0.0004) {
+      camera.position.x += (Math.random() - 0.5) * shakeAmp;
+      camera.position.z += (Math.random() - 0.5) * shakeAmp;
+      shakeAmp *= 0.86;
+    }
     renderer.render(scene, camera);
     frames.push(t);
     while (frames.length && t - frames[0] > 2000) frames.shift();
@@ -361,13 +393,93 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   const raycaster = new THREE.Raycaster();
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -R);
 
+  // bolas dentro das caçapas (ficam visíveis lá no fundo) e as que estão caindo
+  const inPocket = new Map<number, { hole: number }>();
+  const falling = new Set<number>();
+  function fall(id: number, m: THREE.Mesh) {
+    const from = m.position.clone();
+    let hole = 0;
+    holes.forEach((h, i) => {
+      const best = holes[hole];
+      if ((h.x - from.x) ** 2 + (h.z - from.z) ** 2 < (best.x - from.x) ** 2 + (best.z - from.z) ** 2) hole = i;
+    });
+    const h = holes[hole];
+    // as bolas se acomodam lado a lado no fundo da caçapa
+    const a = h.count * 2.3;
+    const spread = h.count ? h.r * 0.42 : 0;
+    const rest = new THREE.Vector3(h.x + Math.cos(a) * spread, -POCKET_DEPTH + R, h.z + Math.sin(a) * spread);
+    h.count++;
+    falling.add(id);
+    const start = performance.now();
+    const ROLL = 150;
+    const DROP = 320;
+    effects.push((now) => {
+      if (!falling.has(id)) return false; // a mesa foi reiniciada no meio da queda
+      const t = now - start;
+      if (t < ROLL) {
+        // ainda rolando: chega na boca da caçapa
+        const k = t / ROLL;
+        m.position.set(from.x + (h.x - from.x) * k, R, from.z + (h.z - from.z) * k);
+      } else {
+        // despenca: aceleração constante até o fundo, quicando de leve no fim
+        const k = Math.min(1, (t - ROLL) / DROP);
+        const y = R + (rest.y - R) * k * k;
+        const bounce = k === 1 ? 0 : Math.sin(k * Math.PI) * 0.004;
+        m.position.set(h.x + (rest.x - h.x) * k, y + bounce, h.z + (rest.z - h.z) * k);
+      }
+      m.rotateX(0.25);
+      if (t < ROLL + DROP) return true;
+      m.position.copy(rest);
+      falling.delete(id);
+      inPocket.set(id, { hole });
+      return false;
+    });
+  }
+
+  // brilho rápido no ponto de um choque
+  const flashGeo = new THREE.RingGeometry(R * 0.8, R * 1.05, 28);
+  function flash(x: number, y: number, strength: number) {
+    const mat = new THREE.MeshBasicMaterial({ color: '#fff4d6', transparent: true, opacity: 0.8 * strength, depthWrite: false, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(flashGeo, mat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.copy(toScene(x, y)).setY(0.004);
+    scene.add(ring);
+    const start = performance.now();
+    effects.push((now) => {
+      const k = (now - start) / 240;
+      if (k >= 1) {
+        scene.remove(ring);
+        mat.dispose();
+        return false;
+      }
+      ring.scale.setScalar(1 + k * 1.6);
+      mat.opacity = 0.8 * strength * (1 - k);
+      return true;
+    });
+  }
+
   const api = {
     setBalls(balls: BallPos[]) {
       for (const b of balls) {
         const m = mesh(b.id);
-        m.visible = !b.pocketed;
+        if (b.pocketed) {
+          // caiu agora: rola até a boca, despenca com gravidade e fica lá dentro
+          if (!inPocket.has(b.id) && !falling.has(b.id)) {
+            if (m.visible && last.has(b.id)) fall(b.id, m);
+            else m.visible = false; // já estava encaçapada quando a mesa carregou
+          }
+          continue;
+        }
+        // voltou para a mesa (bola recolocada ou mesa nova): sai da caçapa
+        const was = inPocket.get(b.id);
+        if (was) {
+          holes[was.hole].count--;
+          inPocket.delete(b.id);
+        }
+        falling.delete(b.id);
+        m.visible = true;
         const prev = last.get(b.id);
-        if (prev && !b.pocketed) {
+        if (prev) {
           // gira a bola na direção em que rolou
           const dx = b.x - prev.x;
           const dz = b.y - prev.y;
@@ -384,6 +496,32 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     setHighlight(ids: number[]) {
       highlighted = ids;
       placeRings();
+      invalidate();
+    },
+    // o taco recua um pouco mais e bate na branca; resolve no instante do contato
+    strike(angle: number, power: number): Promise<void> {
+      return new Promise((resolve) => {
+        const start = performance.now();
+        const back = power * 0.5 + 0.08;
+        const BACK = 110;
+        const HIT = 60 + (1 - power) * 70; // tacada forte é mais rápida
+        effects.push((now) => {
+          const t = now - start;
+          if (t < BACK) cueState = { visible: true, angle, pull: power * 0.5 + ((back - power * 0.5) * t) / BACK };
+          else if (t < BACK + HIT) cueState = { visible: true, angle, pull: back - ((back + 0.06) * (t - BACK)) / HIT };
+          else {
+            cueState = { visible: false, angle, pull: 0 };
+            resolve();
+            return false;
+          }
+          return true;
+        });
+        invalidate();
+      });
+    },
+    flash,
+    shake(amount: number) {
+      shakeAmp = Math.max(shakeAmp, amount);
       invalidate();
     },
     setCue(visible: boolean, angle: number, pull: number) {

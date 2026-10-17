@@ -221,18 +221,31 @@ function startRoom(id: string, name: string) {
     const sim = simulate(m.balls, m.shot, undefined, MODES[room.mode].table);
     // o resultado sai antes da animação: se quem tacou cair, a mesa usa o de outro aparelho
     net.send({ t: 'result', shotNo: m.shotNo, final: sim.final, events: sim.events });
-    sound.play('cue', m.shot.power);
+    const power = m.shot.power;
     let nextEvent = 0;
-    const t0 = performance.now();
+    let potted = false;
+    let t0 = 0;
     const frame = (t: number) => {
+      if (!t0) t0 = t;
       const i = skip ? sim.frames.length - 1 : Math.min(sim.frames.length - 1, Math.max(0, Math.floor(((t - t0) / 1000) * 60)));
       show(sim.frames[i]);
       if (skip) nextEvent = sim.events.length;
-      // cada quadro cobre 4 passos da física: toca os sons dos eventos que já aconteceram
+      // cada quadro cobre 4 passos da física: os eventos que já aconteceram viram som, brilho e tremidinha
       for (; nextEvent < sim.events.length && sim.events[nextEvent].step <= i * 4; nextEvent++) {
         const e = sim.events[nextEvent];
-        if (e.kind === 'pocket') sound.play('pocket');
-        else sound.play(e.kind === 'hit' ? 'ball' : 'cushion', (e.v ?? 1) / 4);
+        if (e.kind === 'pocket') {
+          sound.play('pocket');
+          buzz(25);
+          if (!potted && e.ball !== 0) banner('Na caçapa!', 'good');
+          potted ||= e.ball !== 0;
+        } else if (e.kind === 'hit') {
+          const v = e.v ?? 1;
+          sound.play('ball', v / 4);
+          const a = sim.frames[i].find((b) => b.id === e.a);
+          const b = sim.frames[i].find((b) => b.id === e.b);
+          if (a && b) scene.flash((a.x + b.x) / 2, (a.y + b.y) / 2, Math.min(1, v / 2.5));
+          if (v > 2.2) scene.shake(Math.min(0.012, v * 0.0025));
+        } else sound.play('cushion', (e.v ?? 1) / 4);
       }
       if (controls.camMode === 'aim') scene.follow(sim.frames[i].find((b) => b.id === 0 && !b.pocketed) ?? null);
       if (i < sim.frames.length - 1) return requestAnimationFrame(frame);
@@ -242,7 +255,22 @@ function startRoom(id: string, name: string) {
       queued = null;
       if (next) applyState(next);
     };
-    requestAnimationFrame(frame);
+    // primeiro o taco bate na branca; só então as bolas andam
+    void scene.strike(Math.atan2(m.shot.dy, m.shot.dx), skip ? 0 : power).then(() => {
+      sound.play('cue', power);
+      buzz(12 + power * 20);
+      if (power > 0.7) scene.shake(0.006 * power);
+      requestAnimationFrame(frame);
+    });
+  }
+
+  // vibração curta no celular (onde existir)
+  function buzz(ms: number) {
+    try {
+      navigator.vibrate?.(ms);
+    } catch {
+      // sem vibração
+    }
   }
 
   function onMsg(m: ServerMsg) {
