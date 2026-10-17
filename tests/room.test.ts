@@ -308,7 +308,7 @@ test('log: start, each shot, and new game go into the room log', () => {
   expect(s.log.at(-1)).toBe('a abriu uma nova partida');
 });
 
-test('vote kick: more than half of the others; the kicked one cannot come back', () => {
+test('vote kick: more than half of the others; the kicked one only watches until voted back', () => {
   let s = room('a', 'b', 'c', 'd');
   // 3 outros votam sobre 'd': precisa de 2
   let r = run(s, 'a', { t: 'kick', seat: 3 });
@@ -324,7 +324,9 @@ test('vote kick: more than half of the others; the kicked one cannot come back',
   expect(s.seats[3]).toBeNull();
   expect(errorsTo(r.out, 'd')).toEqual(['kicked']);
   expect(s.log.at(-1)).toBe('d foi expulso por votação');
-  expect(errorsTo(run(s, 'd', { t: 'hello', playerId: pid('d'), name: 'd' }).out, 'd')).toEqual(['kicked']);
+  const back = run(s, 'd', { t: 'hello', playerId: pid('d'), name: 'd' }).state!;
+  expect(back.seats.some((x) => x?.name === 'd')).toBe(false);
+  expect(back.spectators.map((x) => x.name)).toContain('d');
 });
 
 test('vote kick: only seated players vote, not on themselves; 2 players → 1 vote is enough', () => {
@@ -389,4 +391,53 @@ test('turn timer: spectators cannot change it', () => {
   let s = started('a', 'b');
   s = run(s, 'c', { t: 'hello', playerId: pid('c'), name: 'c' }).state!;
   expect(errorsTo(run(s, 'c', { t: 'timer', seconds: 30 }).out, 'c')).toEqual(['bad_msg']);
+});
+
+test('join mid-game by vote: a newcomer gets a new seat at the end', () => {
+  let s = run(roomOf('snooker', 'a', 'b'), 'a', { t: 'start' }).state!;
+  s = run(s, 'c', { t: 'hello', playerId: pid('c'), name: 'c' }).state!;
+  expect(s.spectators.map((x) => x.name)).toEqual(['c']);
+  s = run(s, 'c', { t: 'join' }).state!;
+  expect(publicRoom(s).joinRequests).toEqual([{ id: 1, name: 'c', votes: 0 }]);
+  s = run(s, 'a', { t: 'admit', id: 1 }).state!;
+  expect(s.seats[2]).toBeNull();
+  s = run(s, 'b', { t: 'admit', id: 1 }).state!;
+  expect(s.seats[2]?.name).toBe('c');
+  expect(s.game!.seats).toBe(3);
+  expect((s.game as { scores: number[] }).scores).toEqual([0, 0, 0]);
+  expect(s.spectators).toEqual([]);
+  expect(publicRoom(s).joinRequests).toEqual([]);
+  expect(s.log.at(-1)).toBe('c entrou na mesa por votação');
+});
+
+test('kicked player keeps watching, asks to come back and gets the old seat and score back', () => {
+  let s = run(roomOf('snooker', 'a', 'b', 'c'), 'a', { t: 'start' }).state!;
+  s = { ...s, game: { ...s.game!, scores: [1, 2, 3] } as RoomState['game'] };
+  s = run(s, 'a', { t: 'kick', seat: 2 }).state!;
+  const r = run(s, 'b', { t: 'kick', seat: 2 });
+  s = r.state!;
+  expect(errorsTo(r.out, 'c')).toEqual(['kicked']);
+  expect(s.spectators.map((x) => x.name)).toEqual(['c']);
+  s = run(s, 'c', { t: 'join' }).state!;
+  s = run(s, 'a', { t: 'admit', id: 1 }).state!;
+  s = run(s, 'b', { t: 'admit', id: 1 }).state!;
+  expect(s.seats[2]?.name).toBe('c');
+  expect((s.game as { scores: number[] }).scores).toEqual([1, 2, 3]);
+  expect(s.kicked).toEqual([]);
+});
+
+test('join: bola 8 only into an empty seat; in the waiting room you just sit; kicked cannot sit', () => {
+  let s = started('a', 'b');
+  s = run(s, 'c', { t: 'hello', playerId: pid('c'), name: 'c' }).state!;
+  expect(errorsTo(run(s, 'c', { t: 'join' }).out, 'c')).toEqual(['bad_msg']);
+  let w = roomOf('free', 'a', 'b', 'c');
+  w = run(w, 'a', { t: 'kick', seat: 2 }).state!;
+  w = run(w, 'b', { t: 'kick', seat: 2 }).state!;
+  expect(errorsTo(run(w, 'c', { t: 'sit', seat: 5 }).out, 'c')).toEqual(['bad_msg']);
+  w = run(w, 'd', { t: 'hello', playerId: pid('d'), name: 'd' }).state!;
+  expect(errorsTo(run(w, 'd', { t: 'join' }).out, 'd')).toEqual(['bad_msg']);
+  // quem foi expulso e reconecta continua assistindo, sem erro
+  const back = run(w, 'c', { t: 'hello', playerId: pid('c'), name: 'c' });
+  expect(errorsTo(back.out, 'c')).toEqual([]);
+  expect(back.state!.spectators.some((x) => x.name === 'c')).toBe(true);
 });

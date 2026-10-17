@@ -91,7 +91,7 @@ function startRoom(id: string, name: string) {
   let videoPlaying = false;
 
   let room: PublicRoom | null = null;
-  let you: { playerId: string; seat: number | null; voted: number[] } = { playerId, seat: null, voted: [] };
+  let you: { playerId: string; seat: number | null; voted: number[]; kicked: boolean; admitted: number[]; joinId: number | null } = { playerId, seat: null, voted: [], kicked: false, admitted: [], joinId: null };
   let online = false;
   let animating = false;
   let skip = false;
@@ -192,7 +192,7 @@ function startRoom(id: string, name: string) {
     rerack: () => net.send({ t: 'rerack' }),
     // o voto que completa a maioria expulsa na hora: pergunta antes
     kick: (seat: number, name: string, decides: boolean) => {
-      if (!decides || confirm(`Expulsar ${name} desta mesa? Ele não vai conseguir voltar.`)) net.send({ t: 'kick', seat });
+      if (!decides || confirm(`Expulsar ${name} desta mesa? Ele fica assistindo e só volta se vocês votarem.`)) net.send({ t: 'kick', seat });
     },
     // no meio do jogo pergunta antes: o placar de todos zera
     reset: () => {
@@ -221,6 +221,8 @@ function startRoom(id: string, name: string) {
     },
     stopVideo: () => net.send({ t: 'video', id: null }),
     timer: (seconds: number) => net.send({ t: 'timer', seconds }),
+    join: () => net.send({ t: 'join' }),
+    admit: (id: number) => net.send({ t: 'admit', id }),
     videoMini: () => videoMini,
     toggleVideo() {
       videoMini = !videoMini;
@@ -393,8 +395,8 @@ function startRoom(id: string, name: string) {
       net.stop();
       screen(ui, 'Mesa não encontrada', 'Confira o link ou crie uma mesa nova no lobby.', 'Ir para o lobby', act.lobby);
     } else if (m.code === 'kicked') {
-      net.stop();
-      screen(ui, 'Você foi expulso', 'Os outros jogadores votaram para tirar você desta mesa.', 'Ir para o lobby', act.lobby);
+      // continua na mesa assistindo; dá para pedir para voltar
+      toast('Os outros jogadores votaram para tirar você desta mesa. Você pode pedir para voltar.');
     } else if (m.code === 'other_tab') {
       net.stop();
       screen(ui, 'Mesa aberta em outra aba', 'Você abriu esta mesa em outra aba ou janela.', 'Jogar nesta aba', () => location.reload());

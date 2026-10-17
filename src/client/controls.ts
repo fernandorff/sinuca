@@ -181,7 +181,7 @@ export function createControls(
 
   // barra de espaço taca, como o botão (pedido do Fernando, 17/10/2026); não vale digitando num campo
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' || e.repeat || !opts || document.querySelector('.overlay, .menu-panel') || (e.target as HTMLElement | null)?.closest('input, textarea')) return;
+    if (e.code !== 'Space' || e.repeat || !opts || document.querySelector('.overlay') || (e.target as HTMLElement | null)?.closest('input, textarea')) return;
     e.preventDefault();
     shootBtn.click();
   });

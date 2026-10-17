@@ -139,14 +139,15 @@ body.in-room::after { content: ''; position: fixed; inset: 0; pointer-events: no
 .turn-clock { position: fixed; z-index: 4; top: calc(8px + var(--safe-t)); left: 50%; transform: translateX(-50%); background: rgba(20, 17, 13, .88); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-weight: 700; pointer-events: none; }
 .turn-clock[hidden] { display: none; }
 .turn-clock.low { background: var(--bad); color: #fff; }
-/* topo organizado em 3 menus: botão por assunto e uma caixa com seções */
-.menu-btn { min-height: 36px; padding: 6px 12px; font-size: .9rem; }
-.menu-btn.on { border-color: var(--chalk); }
-.hud-top { position: relative; }
-.menu-panel { position: absolute; z-index: 6; top: calc(100% + 8px); left: 0; width: min(360px, calc(100vw - 20px)); max-height: calc(100vh - 90px); overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, .55); }
-.menu-panel h3 { margin: 0 0 6px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.menu-panel .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.menu-panel button { min-height: 38px; padding: 6px 12px; font-size: .9rem; }
-.menu-panel select { font: inherit; color: var(--fg); background: var(--bg, #14110d); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; flex: 1; }
-.menu-panel input[type="range"] { flex: 1; accent-color: var(--wood); }
+/* barra com todas as opções, em blocos por assunto */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; width: fit-content; max-width: calc(100% - 96px); }
+.tool-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 8px; background: rgba(20, 17, 13, .82); border: 1px solid var(--line); border-radius: 10px; }
+.tool-title { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-right: 2px; }
+.tool-group button { min-height: 30px; padding: 3px 10px; font-size: .82rem; border-radius: 8px; }
+.tool-group select { font: inherit; font-size: .82rem; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+.tool-group input[type="range"] { width: 80px; accent-color: var(--wood); }
 @media (max-width: 700px) { .turn-clock { top: auto; bottom: calc(96px + var(--safe-b)); } }
+/* pedido para entrar: verde para quem pede, azul-escuro para quem vota */
+.status.join-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.status.join-box button { min-height: 32px; padding: 4px 12px; font-size: .85rem; }
+.status.join-alert { background: rgba(30, 70, 110, .9); }

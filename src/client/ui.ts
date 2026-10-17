@@ -123,18 +123,6 @@ export function toast(msg: string) {
 const GROUP = { solids: 'lisas', stripes: 'listradas' };
 // menu de expulsar aberto: continua aberto (com os votos atualizados) quando a mesa muda
 let kickOpen = false;
-// menu do topo aberto (som e vídeo, mesa ou ajuda); tocar fora fecha
-type Menu = 'som' | 'mesa' | 'ajuda';
-let menu: Menu | null = null;
-let redraw: (() => void) | null = null;
-if (typeof document !== 'undefined') {
-  document.addEventListener('pointerdown', (e) => {
-    if (menu && !(e.target as Element | null)?.closest?.('.menu-panel, .menu-btn')) {
-      menu = null;
-      redraw?.();
-    }
-  });
-}
 // painel de jogadas aberto ou fechado: preferência de cada um, guardada no navegador
 let logOpen = (() => {
   try {
@@ -165,44 +153,35 @@ export function targetText(g: GameState): string {
 export function renderHud(
   root: HTMLElement,
   room: PublicRoom,
-  you: { seat: number | null; voted: number[] },
+  you: { seat: number | null; voted: number[]; kicked: boolean; admitted: number[]; joinId: number | null },
   online: boolean,
   status: string,
   muted: boolean,
   animating: boolean,
   music: TrackId,
   musicVol: number,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void; timer(seconds: number): void },
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void; timer(seconds: number): void; join(): void; admit(id: number): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
   const teams = room.mode === 'eightball';
   const seatCount = g ? g.seats : MAX_SEATS;
   const again = () => renderHud(root, room, you, online, status, muted, animating, music, musicVol, act);
-  redraw = again;
-  const menuButton = (id: Menu, label: string) =>
-    el(
-      'button',
-      {
-        type: 'button',
-        class: `menu-btn${menu === id ? ' on' : ''}`,
-        'aria-expanded': String(menu === id),
-        onclick: () => {
-          menu = menu === id ? null : id;
-          again();
-        },
-      },
-      label,
+  // pedido para entrar: precisa de mais da metade dos jogadores sentados e conectados
+  const joinNeed = Math.floor(room.seats.filter((x) => x?.connected).length / 2) + 1;
+  const joinBox = () => {
+    const mine = (room.joinRequests ?? []).find((j) => j.id === you.joinId);
+    const text = you.kicked ? 'Você foi expulso desta mesa.' : 'A partida já começou.';
+    return el(
+      'div',
+      { class: 'status join-box', role: 'status' },
+      mine ? `${text} Pedido enviado: ${mine.votes} de ${joinNeed} votos.` : `${text} `,
+      !mine && el('button', { type: 'button', class: 'primary', onclick: act.join }, you.kicked ? 'Pedir para voltar' : 'Pedir para entrar'),
     );
-  const menuPanel = (...children: (HTMLElement | false | null)[]) => el('div', { class: 'menu-panel' }, ...children);
-  const section = (title: string, ...children: (HTMLElement | false | null | undefined)[]) =>
-    el('section', {}, el('h3', {}, title), el('div', { class: 'row' }, ...children));
-  // comando que abre outra coisa (janela, pergunta): fecha o menu antes
-  const pick = (fn: () => void) => () => {
-    menu = null;
-    again();
-    fn();
   };
+  // bloco da barra: título pequeno e os comandos lado a lado
+  const group = (title: string, ...children: (HTMLElement | false | null | undefined)[]) =>
+    el('div', { class: 'tool-group', role: 'group', 'aria-label': title }, el('span', { class: 'tool-title' }, title), ...children);
   // votar para expulsar, num menu em janela (pedido do Fernando, 17/10/2026): uma linha por jogador, com votos/necessários
   const others = you.seat === null ? [] : room.seats.flatMap((x, i) => (x && i !== you.seat ? [{ i, name: x.name }] : []));
   const kickMenu = () => {
@@ -217,7 +196,7 @@ export function renderHud(
         'div',
         { class: 'panel kick-menu', role: 'dialog', 'aria-label': 'Votar para expulsar' },
         el('h2', {}, 'Votar para expulsar'),
-        el('p', { class: 'muted' }, 'Sai quem tiver votos de mais da metade dos outros jogadores. Quem sai não volta nesta mesa e a vez dele é pulada.'),
+        el('p', { class: 'muted' }, 'Sai quem tiver votos de mais da metade dos outros jogadores. Quem sai fica assistindo, a vez dele é pulada, e só volta se vocês votarem.'),
         el(
           'ul',
           {},
@@ -271,84 +250,58 @@ export function renderHud(
       el('button', { type: 'button', class: 'link', onclick: act.lobby, 'aria-label': 'Voltar ao lobby' }, '‹ Lobby'),
       el('button', { type: 'button', class: 'code', onclick: act.copy, title: 'Copiar link da mesa' }, `${room.id} · copiar link`),
       el('span', { class: `dot ${online ? 'on' : 'off'}`, title: online ? 'conectado' : 'reconectando…' }),
-      // comandos em 3 menus por assunto (pedido do Fernando, 17/10/2026)
-      menuButton('som', muted ? '🔇 Som e vídeo' : '🔊 Som e vídeo'),
-      menuButton('mesa', '⚙ Mesa'),
-      menuButton('ajuda', '? Ajuda'),
-      // a caixa do menu fica dentro do topo, logo abaixo dele (no celular o topo tem duas linhas)
-      menu === 'som' &&
-        menuPanel(
-          section('Efeitos', el('button', { type: 'button', 'aria-pressed': String(!muted), onclick: act.mute }, muted ? 'Sons do jogo: desligados' : 'Sons do jogo: ligados')),
-          section(
-            'Música de fundo',
-            el('select', { 'aria-label': 'Música de fundo', onchange: (e: Event) => act.music((e.target as HTMLSelectElement).value as TrackId) }, ...TRACKS.map((t) => el('option', { value: t.id, selected: t.id === music }, t.label))),
+    ),
+    // todas as opções à vista, em 3 blocos por assunto (pedido do Fernando, 17/10/2026)
+    el(
+      'div',
+      { class: 'toolbar' },
+      group(
+        'Som e vídeo',
+        el('button', { type: 'button', 'aria-pressed': String(!muted), onclick: act.mute, title: 'Sons do jogo (tacada, bolas, caçapa)' }, muted ? '🔇 Sons' : '🔊 Sons'),
+        el('select', { 'aria-label': 'Música de fundo', onchange: (e: Event) => act.music((e.target as HTMLSelectElement).value as TrackId) }, ...TRACKS.map((t) => el('option', { value: t.id, selected: t.id === music }, t.label))),
+        el('input', { type: 'range', min: '0', max: '100', value: String(Math.round(musicVol * 100)), 'aria-label': 'Volume da música e do vídeo (só no seu aparelho)', title: 'Volume da música e do vídeo (só no seu aparelho)', oninput: (e: Event) => act.musicVolume(Number((e.target as HTMLInputElement).value) / 100) }),
+        el('button', { type: 'button', onclick: act.video, title: 'Vídeo do YouTube que a mesa toda ouve; substitui o que estiver tocando' }, room.video ? '▶ Trocar vídeo' : '▶ Vídeo'),
+        room.video && el('button', { type: 'button', onclick: act.stopVideo, title: `Colocado por ${room.video.by}` }, 'Tirar vídeo'),
+        room.video && el('button', { type: 'button', onclick: act.toggleVideo }, act.videoMini() ? 'Mostrar vídeo' : 'Esconder vídeo'),
+      ),
+      group(
+        'Mesa',
+        you.seat !== null &&
+          el(
+            'select',
+            { 'aria-label': 'Tempo por jogada', title: 'Tempo por jogada: ao acabar, taca com a mira e a força do momento', onchange: (e: Event) => act.timer(Number((e.target as HTMLSelectElement).value)) },
+            ...TIMER_OPTIONS.map((t) => el('option', { value: String(t), selected: t === (room.turnLimit ?? 0) }, t ? `⏱ ${t} s` : '⏱ Sem limite')),
           ),
-          section(
-            'Volume (música e vídeo, só no seu aparelho)',
-            el('input', { type: 'range', min: '0', max: '100', value: String(Math.round(musicVol * 100)), 'aria-label': 'Volume da música e do vídeo', oninput: (e: Event) => act.musicVolume(Number((e.target as HTMLInputElement).value) / 100) }),
-          ),
-          section(
-            room.video ? `Vídeo do YouTube (colocado por ${room.video.by})` : 'Vídeo do YouTube (a mesa toda ouve)',
-            el('button', { type: 'button', onclick: pick(act.video) }, room.video ? 'Trocar vídeo' : 'Colocar vídeo'),
-            room.video && el('button', { type: 'button', onclick: act.stopVideo }, 'Tirar vídeo'),
-            room.video && el('button', { type: 'button', onclick: act.toggleVideo }, act.videoMini() ? 'Mostrar vídeo' : 'Esconder vídeo'),
-          ),
+        el(
+          'button',
+          {
+            type: 'button',
+            'aria-pressed': String(logOpen),
+            onclick: () => {
+              logOpen = !logOpen;
+              try {
+                localStorage.setItem('sinuca:log', logOpen ? '1' : '0');
+              } catch {}
+              again();
+            },
+          },
+          logOpen ? 'Esconder jogadas' : 'Jogadas',
         ),
-      menu === 'mesa' &&
-        menuPanel(
-          you.seat !== null &&
-            section(
-              'Tempo por jogada (ao acabar, taca com a mira e a força do momento)',
-              el(
-                'select',
-                { 'aria-label': 'Tempo por jogada', onchange: (e: Event) => act.timer(Number((e.target as HTMLSelectElement).value)) },
-                ...TIMER_OPTIONS.map((t) => el('option', { value: String(t), selected: t === (room.turnLimit ?? 0) }, t ? `${t} s` : 'Sem limite')),
-              ),
-            ),
-          section(
-            'Partida',
-            el(
-              'button',
-              {
-                type: 'button',
-                'aria-pressed': String(logOpen),
-                onclick: () => {
-                  logOpen = !logOpen;
-                  try {
-                    localStorage.setItem('sinuca:log', logOpen ? '1' : '0');
-                  } catch {}
-                  again();
-                },
+        !waiting && you.seat !== null && el('button', { type: 'button', onclick: act.reset, title: 'Volta para a espera: o placar zera e entra quem quiser' }, 'Nova partida'),
+        others.length > 0 &&
+          el(
+            'button',
+            {
+              type: 'button',
+              onclick: () => {
+                kickOpen = true;
+                again();
               },
-              logOpen ? 'Esconder jogadas' : 'Mostrar jogadas',
-            ),
-            !waiting && you.seat !== null && el('button', { type: 'button', onclick: pick(act.reset), title: 'Volta para a espera: o placar zera e entra quem quiser' }, 'Nova partida'),
+            },
+            'Expulsar…',
           ),
-          others.length > 0 &&
-            section(
-              'Jogadores',
-              el(
-                'button',
-                {
-                  type: 'button',
-                  onclick: () => {
-                    menu = null;
-                    kickOpen = true;
-                    again();
-                  },
-                },
-                'Votar para expulsar…',
-              ),
-            ),
-        ),
-      menu === 'ajuda' &&
-        menuPanel(
-          section(
-            'Ajuda',
-            el('button', { type: 'button', onclick: pick(() => showRules(room.mode)) }, 'Regras do modo'),
-            el('button', { type: 'button', onclick: pick(() => showRules(room.mode, true)) }, 'Controles'),
-          ),
-        ),
+      ),
+      group('Ajuda', el('button', { type: 'button', onclick: () => showRules(room.mode) }, 'Regras'), el('button', { type: 'button', onclick: () => showRules(room.mode, true) }, 'Controles')),
     ),
     el('div', { class: 'mode-name' }, MODES[room.mode].label),
     el('ul', { class: 'seats' }, ...seats),
@@ -398,6 +351,19 @@ export function renderHud(
         you.seat !== null && el('button', { type: 'button', onclick: act.reset }, 'Nova partida (abrir lugares)'),
       ),
     you.seat === null && !waiting && el('div', { class: 'badge' }, 'assistindo'),
+    // entrar no meio do jogo ou voltar depois de expulso: quem assiste pede, os sentados votam (pedido do Fernando, 17/10/2026)
+    you.seat === null && (you.kicked || !waiting) && joinBox(),
+    ...(you.seat === null
+      ? []
+      : (room.joinRequests ?? []).map((j) => {
+          const mine = you.admitted.includes(j.id);
+          return el(
+            'div',
+            { class: 'status kick-alert join-alert', role: 'status' },
+            `${j.name} pediu para entrar: ${j.votes} de ${joinNeed} votos. `,
+            el('button', { type: 'button', class: mine ? 'on' : '', onclick: () => act.admit(j.id) }, mine ? 'Tirar voto' : 'Deixar entrar'),
+          );
+        })),
     kickOpen && others.length > 0 && kickMenu(),
   ].filter((c): c is HTMLElement => !!c));
 }

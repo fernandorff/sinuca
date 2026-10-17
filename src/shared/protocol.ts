@@ -13,6 +13,8 @@ export type ClientMsg =
   | { t: 'kick'; seat: number }
   | { t: 'video'; id: string | null }
   | { t: 'timer'; seconds: number }
+  | { t: 'join' }
+  | { t: 'admit'; id: number }
   | { t: 'sit'; seat: number | null }
   | { t: 'aim'; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'shot'; shotNo: number; shot: Shot; cue?: { x: number; y: number } }
@@ -22,7 +24,7 @@ export type ErrorCode = 'not_found' | 'other_tab' | 'not_your_turn' | 'bad_cue' 
 
 export type ServerMsg =
   // now = relógio do servidor no envio: cada tela acerta a contagem do tempo pela diferença com o próprio relógio
-  | { t: 'state'; room: PublicRoom; you: { playerId: string; seat: number | null; voted: number[] }; now: number }
+  | { t: 'state'; room: PublicRoom; you: { playerId: string; seat: number | null; voted: number[]; kicked: boolean; admitted: number[]; joinId: number | null }; now: number }
   | { t: 'shot'; shotNo: number; by: number; shot: Shot; balls: BallPos[] }
   | { t: 'aim'; seat: number; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'error'; code: ErrorCode; msg: string };
@@ -93,7 +95,10 @@ export function parseClientMessage(raw: string): ClientMsg | null {
     case 'rematch':
     case 'rerack':
     case 'reset':
+    case 'join':
       return { t: m.t };
+    case 'admit':
+      return int(m.id, 1, 1e9) ? { t: 'admit', id: m.id } : null;
     case 'timer':
       return TIMER_OPTIONS.includes(m.seconds as number) ? { t: 'timer', seconds: m.seconds as number } : null;
     case 'video':
