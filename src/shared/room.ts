@@ -82,7 +82,7 @@ function canShoot(s: RoomState, playerId: string): boolean {
   return s.game.seats === 4 && !turnSeat?.connected && mine >= 0 && mine % 2 === s.game.turn % 2;
 }
 
-function cueOk(game: EightState, cue: { x: number; y: number }): boolean {
+export function cueOk(game: EightState, cue: { x: number; y: number }): boolean {
   if (!game.ballInHand) return false;
   if (cue.x < R || cue.x > L - R || cue.y < R || cue.y > W - R) return false;
   if (game.ballInHand === 'kitchen' && cue.x > HEAD_X) return false;
