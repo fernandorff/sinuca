@@ -3,7 +3,7 @@ import type { Shot } from '../shared/physics.ts';
 import type { GameScene } from './scene.ts';
 
 export type ControlOpts = {
-  ballInHand: 'anywhere' | 'kitchen' | null;
+  ballInHand: 'anywhere' | 'kitchen' | 'd' | null;
   cue: { x: number; y: number };
   cueValid: (p: { x: number; y: number }) => boolean;
 };
@@ -20,6 +20,7 @@ export function createControls(
 ) {
   let opts: ControlOpts | null = null;
   let angle = 0;
+  let power = 0.5;
   let spinX = 0;
   let spinY = 0;
   let camMode: 'top' | 'aim' = 'top';
@@ -28,24 +29,33 @@ export function createControls(
   let lastAimSent = 0;
 
   root.innerHTML = `
-    <div class="ctl-power" id="power" aria-label="Força: arraste para baixo e solte"><div class="ctl-power-fill" id="power-fill"></div><span>Força<br>puxe ↓</span></div>
+    <div class="ctl-shoot">
+      <div class="ctl-power" id="power" role="slider" tabindex="0" aria-label="Força" aria-valuemin="0" aria-valuemax="100">
+        <div class="ctl-power-fill" id="power-fill"></div><span>Força<br><b id="power-pct"></b></span>
+      </div>
+      <button id="shoot" type="button" class="primary">Tacar</button>
+    </div>
     <div class="ctl-spin" id="spin" aria-label="Efeito na branca"><div class="ctl-spin-dot" id="spin-dot"></div></div>
     <div class="ctl-buttons">
       <button id="cam" type="button">Vista de mira</button>
       <button id="move" type="button" hidden>Mover branca</button>
     </div>`;
   const $ = (id: string) => root.querySelector<HTMLElement>('#' + id)!;
-  const power = $('power');
+  const powerEl = $('power');
   const fill = $('power-fill');
+  const pct = $('power-pct');
+  const shootBtn = $('shoot') as HTMLButtonElement;
   const spin = $('spin');
   const dot = $('spin-dot');
   const camBtn = $('cam') as HTMLButtonElement;
   const moveBtn = $('move') as HTMLButtonElement;
 
   const cuePos = () => placed ?? opts?.cue ?? null;
+  // o taco recua conforme a força escolhida
+  const showCue = () => scene.setCue(!!opts, angle, power * 0.5);
 
   function sendAim() {
-    scene.setCue(!!opts, angle, 0);
+    showCue();
     const now = performance.now();
     if (now - lastAimSent > 100) {
       lastAimSent = now;
@@ -53,16 +63,12 @@ export function createControls(
     }
   }
 
-  // mira: na vista de cima, aponta para onde o dedo está.
-  // Na vista de mira, arrastar para os lados gira e arrastar para baixo puxa o taco; soltar taca.
+  // mira: na vista de cima, aponta para onde o dedo está; na vista de mira, arrastar para os lados gira
   let dragX: number | null = null;
-  let dragStartY = 0;
   canvas.addEventListener('pointerdown', (e) => {
     if (!opts) return;
     canvas.setPointerCapture(e.pointerId);
     dragX = e.clientX;
-    dragStartY = e.clientY;
-    pull = 0;
     pointerAt(e);
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -70,17 +76,11 @@ export function createControls(
     if (camMode === 'aim' && !placing) {
       angle += (e.clientX - dragX) * 0.003;
       dragX = e.clientX;
-      // os primeiros 24 px não puxam, para mirar sem tacar sem querer
-      setPull((e.clientY - dragStartY - 24) / 220);
       scene.setCamera('aim', angle);
       sendAim();
     } else pointerAt(e);
   });
-  canvas.addEventListener('pointerup', () => {
-    if (dragX === null) return;
-    dragX = null;
-    if (camMode === 'aim' && !placing) release();
-  });
+  canvas.addEventListener('pointerup', () => (dragX = null));
 
   function pointerAt(e: PointerEvent) {
     const p = scene.pickTable(e.clientX, e.clientY);
@@ -88,7 +88,7 @@ export function createControls(
     if (placing) {
       placed = p;
       cb.onMoveCue(p, opts.cueValid(p));
-      scene.setCue(true, angle, 0);
+      showCue();
       return;
     }
     if (camMode !== 'top') return;
@@ -98,34 +98,34 @@ export function createControls(
     sendAim();
   }
 
-  // força: arrastar a barra para baixo carrega, soltar taca
-  let pullStart: number | null = null;
-  let pull = 0;
-  function setPull(p: number) {
-    pull = Math.min(1, Math.max(0, p));
-    fill.style.height = `${pull * 100}%`;
-    scene.setCue(true, angle, pull);
+  // força: tocar ou arrastar na barra escolhe o nível (mais em baixo, mais forte) e ele fica marcado;
+  // o botão Tacar dispara (decisão do Fernando de 17/10/2026)
+  function setPower(p: number) {
+    power = Math.min(1, Math.max(0.03, p));
+    fill.style.height = `${power * 100}%`;
+    pct.textContent = `${Math.round(power * 100)}%`;
+    powerEl.setAttribute('aria-valuenow', String(Math.round(power * 100)));
+    showCue();
   }
-  power.addEventListener('pointerdown', (e) => {
-    if (!opts) return;
-    power.setPointerCapture(e.pointerId);
-    pullStart = e.clientY;
-    pull = 0;
+  function powerAt(e: PointerEvent) {
+    const r = powerEl.getBoundingClientRect();
+    setPower((e.clientY - r.top) / r.height);
+  }
+  powerEl.addEventListener('pointerdown', (e) => {
+    powerEl.setPointerCapture(e.pointerId);
+    powerAt(e);
   });
-  power.addEventListener('pointermove', (e) => {
-    if (pullStart === null) return;
-    setPull((e.clientY - pullStart) / (power.clientHeight * 0.9));
+  powerEl.addEventListener('pointermove', (e) => {
+    if (powerEl.hasPointerCapture(e.pointerId)) powerAt(e);
   });
-  power.addEventListener('pointerup', () => {
-    if (pullStart === null) return;
-    pullStart = null;
-    release();
+  powerEl.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') setPower(power + 0.05);
+    if (e.key === 'ArrowUp') setPower(power - 0.05);
   });
+  setPower(power);
 
-  function release() {
-    fill.style.height = '0';
-    scene.setCue(!!opts, angle, 0);
-    if (!opts || pull < 0.03) return;
+  shootBtn.addEventListener('click', () => {
+    if (!opts) return;
     const cue = placed ?? undefined;
     if (cue && !opts.cueValid(cue)) return;
     // seno e cosseno só aqui, uma vez: a física recebe a direção pronta
@@ -134,9 +134,8 @@ export function createControls(
     const n = Math.sqrt(dx * dx + dy * dy);
     dx /= n;
     dy /= n;
-    cb.onShoot({ dx, dy, power: pull, spinX, spinY }, cue);
-    pull = 0;
-  }
+    cb.onShoot({ dx, dy, power, spinX, spinY }, cue);
+  });
 
   // efeito: arrastar o ponto dentro do círculo (para cima = seguida, para baixo = puxada)
   function setSpin(e: PointerEvent) {
@@ -181,7 +180,7 @@ export function createControls(
       moveBtn.hidden = !next?.ballInHand;
       moveBtn.classList.remove('on');
       moveBtn.textContent = 'Mover branca';
-      scene.setCue(!!next, angle, 0);
+      showCue();
       scene.setCamera(camMode, angle);
     },
     // espectadores veem a mira de quem está na vez

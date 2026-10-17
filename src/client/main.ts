@@ -1,10 +1,12 @@
 import { simulate } from '../shared/physics.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import { MODES, newGameFor, type Mode } from '../shared/rules/index.ts';
 import { cueOk, type PublicRoom } from '../shared/room.ts';
-import { rack, type BallPos } from '../shared/table.ts';
+import type { BallPos } from '../shared/table.ts';
 import { createControls } from './controls.ts';
 import { connect } from './net.ts';
 import { createScene } from './scene.ts';
+import { createSound } from './sound.ts';
 import { askName, el, renderHud, renderLobby, screen, toast, type RoomInfo } from './ui.ts';
 
 // localStorage pode falhar (aba anônima, dados bloqueados): cai para a memória
@@ -55,7 +57,7 @@ function startLobby(name: string) {
       store.set(NAME, name);
       draw();
     });
-  async function create(mode: string) {
+  async function create(mode: Mode) {
     try {
       const res = await fetch('/api/rooms', { method: 'POST', body: JSON.stringify({ mode }) });
       if (!res.ok) throw new Error(String(res.status));
@@ -74,7 +76,6 @@ function startLobby(name: string) {
 
 function startRoom(id: string, name: string) {
   document.body.className = 'in-room';
-  const scene = createScene(canvas);
   const hud = el('div', { class: 'hud' });
   const ctl = el('div', { class: 'controls off' });
   ui.replaceChildren(hud, ctl);
@@ -86,30 +87,47 @@ function startRoom(id: string, name: string) {
   let queued: PublicRoom | null = null;
   let shown: BallPos[] = [];
   let status = 'Conectando…';
+  let muted = store.get('sinuca:mute') === '1';
+  const sound = createSound(() => muted);
+
+  // a cena depende da mesa do modo, que só se sabe quando chega o primeiro estado
+  let view: { scene: ReturnType<typeof createScene>; controls: ReturnType<typeof createControls> } | null = null;
+  function viewFor(mode: Mode) {
+    if (view) return view;
+    const scene = createScene(canvas, mode);
+    const controls = createControls(canvas, ctl, scene, {
+      onAim: (angle) => net.send({ t: 'aim', angle }),
+      onShoot(shot, cue) {
+        if (!room) return;
+        net.send({ t: 'shot', shotNo: room.shotNo, shot, cue });
+        controls.enable(null);
+      },
+      onMoveCue(p, valid) {
+        show(shown.map((b) => (b.id === 0 ? { ...b, x: p.x, y: p.y, pocketed: false } : b)));
+        status = valid ? 'Branca posicionada. Mire e aperte Tacar.' : 'A branca não pode ficar aí.';
+        draw();
+      },
+    });
+    return (view = { scene, controls });
+  }
 
   const net = connect('/ws/room/' + id, onMsg, () => net.send({ t: 'hello', playerId, name }), (on) => {
     online = on;
     draw();
-  });
-  const controls = createControls(canvas, ctl, scene, {
-    onAim: (angle) => net.send({ t: 'aim', angle }),
-    onShoot(shot, cue) {
-      if (!room) return;
-      net.send({ t: 'shot', shotNo: room.shotNo, shot, cue });
-      controls.enable(null);
-    },
-    onMoveCue(p, valid) {
-      show(shown.map((b) => (b.id === 0 ? { ...b, x: p.x, y: p.y, pocketed: false } : b)));
-      status = valid ? 'Branca posicionada. Mire e taque.' : 'A branca não pode ficar aí.';
-      draw();
-    },
   });
 
   const act = {
     sit: (seat: number | null) => net.send({ t: 'sit', seat }),
     start: () => net.send({ t: 'start' }),
     rematch: () => net.send({ t: 'rematch' }),
+    rerack: () => net.send({ t: 'rerack' }),
     lobby: () => (location.hash = ''),
+    mute() {
+      muted = !muted;
+      store.set('sinuca:mute', muted ? '1' : '0');
+      sound.unlock();
+      draw();
+    },
     async copy() {
       try {
         await navigator.clipboard.writeText(location.href);
@@ -121,12 +139,12 @@ function startRoom(id: string, name: string) {
   };
 
   function draw() {
-    if (room) renderHud(hud, room, you, online, status, act);
+    if (room) renderHud(hud, room, you, online, status, muted, act);
   }
 
   function show(balls: BallPos[]) {
     shown = balls;
-    scene.setBalls(balls);
+    view?.scene.setBalls(balls);
   }
 
   // desliza cada bola até a posição oficial em 150 ms
@@ -149,18 +167,21 @@ function startRoom(id: string, name: string) {
     const g = r.game;
     if (!g || r.phase !== 'aiming' || you.seat === null) return false;
     if (you.seat === g.turn) return true;
-    return g.seats === 4 && !r.seats[g.turn]?.connected && you.seat % 2 === g.turn % 2;
+    if (r.seats[g.turn]?.connected) return false;
+    // quem está na vez caiu: na bola 8 em dupla joga o parceiro; nos modos individuais, qualquer um sentado
+    return g.mode === 'eightball' ? g.seats === 4 && you.seat % 2 === g.turn % 2 : true;
   }
 
   function applyState(r: PublicRoom) {
     room = r;
+    const { controls } = viewFor(r.mode);
     const g = r.game;
-    tween(g ? g.balls : rack());
+    tween(g ? g.balls : newGameFor(r.mode, MODES[r.mode].seats[0], 0).balls);
     const turnName = g ? r.seats[g.turn]?.name ?? '' : '';
     const foul = g?.lastFoul ? `Falta: ${g.lastFoul}. ` : '';
     if (r.phase === 'waiting') status = 'Esperando os jogadores.';
     else if (r.phase === 'over') status = foul;
-    else if (myTurn(r)) status = `${foul}Sua vez${g!.ballInHand ? ' · bola na mão' : ''}. Mire e arraste a barra Força para baixo.`;
+    else if (myTurn(r)) status = `${foul}Sua vez${g!.ballInHand ? ' · bola na mão' : ''}. Mire, escolha a força na barra e aperte Tacar.`;
     else status = `${foul}Vez de ${turnName}.`;
     if (myTurn(r) && g) {
       const cue = g.balls.find((b) => b.id === 0)!;
@@ -170,17 +191,27 @@ function startRoom(id: string, name: string) {
   }
 
   function animate(m: Extract<ServerMsg, { t: 'shot' }>) {
+    if (!room) return;
+    const { scene, controls } = viewFor(room.mode);
     animating = true;
     controls.enable(null);
-    status = `${room?.seats[m.by]?.name ?? 'Alguém'} tacou.`;
+    status = `${room.seats[m.by]?.name ?? 'Alguém'} tacou.`;
     draw();
-    const sim = simulate(m.balls, m.shot);
+    const sim = simulate(m.balls, m.shot, undefined, MODES[room.mode].table);
     // o resultado sai antes da animação: se quem tacou cair, a mesa usa o de outro aparelho
     net.send({ t: 'result', shotNo: m.shotNo, final: sim.final, events: sim.events });
+    sound.play('cue', m.shot.power);
+    let nextEvent = 0;
     const t0 = performance.now();
     const frame = (t: number) => {
       const i = Math.min(sim.frames.length - 1, Math.max(0, Math.floor(((t - t0) / 1000) * 60)));
       show(sim.frames[i]);
+      // cada quadro cobre 4 passos da física: toca os sons dos eventos que já aconteceram
+      for (; nextEvent < sim.events.length && sim.events[nextEvent].step <= i * 4; nextEvent++) {
+        const e = sim.events[nextEvent];
+        if (e.kind === 'pocket') sound.play('pocket');
+        else sound.play(e.kind === 'hit' ? 'ball' : 'cushion', (e.v ?? 1) / 4);
+      }
       if (controls.camMode === 'aim') scene.follow(sim.frames[i].find((b) => b.id === 0 && !b.pocketed) ?? null);
       if (i < sim.frames.length - 1) return requestAnimationFrame(frame);
       animating = false;
@@ -199,7 +230,7 @@ function startRoom(id: string, name: string) {
       else applyState(m.room);
     } else if (m.t === 'shot') animate(m);
     else if (m.t === 'aim') {
-      if (m.seat !== you.seat) controls.showAim(m.angle);
+      if (m.seat !== you.seat) view?.controls.showAim(m.angle);
     } else if (m.code === 'not_found') {
       net.stop();
       screen(ui, 'Mesa não encontrada', 'Confira o link ou crie uma mesa nova no lobby.', 'Ir para o lobby', act.lobby);
@@ -214,3 +245,4 @@ function startRoom(id: string, name: string) {
 }
 
 main();
+

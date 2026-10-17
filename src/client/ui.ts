@@ -1,4 +1,7 @@
 // Telas em DOM: apelido, lobby, HUD da mesa e avisos.
+import { MODES, winnersOf, type GameState, type Mode } from '../shared/rules/index.ts';
+import { ballOn } from '../shared/rules/sinuca.ts';
+import { target, valueOf } from '../shared/rules/snooker.ts';
 import type { PublicRoom } from '../shared/room.ts';
 
 type Child = Node | string | null | undefined | false;
@@ -38,15 +41,10 @@ export function askName(root: HTMLElement, current: string): Promise<string> {
 }
 
 export type RoomInfo = { id: string; mode: string; players: number; phase: string };
-const MODES = [
-  { id: 'eightball', label: 'Bola 8', ready: true },
-  { id: 'free', label: 'Mesa livre', ready: false },
-  { id: 'sinuca', label: 'Sinuca brasileira', ready: false },
-  { id: 'snooker', label: 'Snooker', ready: false },
-];
 const PHASE: Record<string, string> = { waiting: 'esperando', aiming: 'jogando', rolling: 'jogando', over: 'fim de jogo' };
+const modeLabel = (m: string) => (m in MODES ? MODES[m as Mode].label : m);
 
-export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] | null, onCreate: (mode: string) => void, onRename: () => void) {
+export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] | null, onCreate: (mode: Mode) => void, onRename: () => void) {
   const list =
     rooms === null
       ? el('p', { class: 'muted' }, 'Carregando mesas…')
@@ -60,7 +58,7 @@ export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] |
                 'li',
                 {},
                 el('span', { class: 'code' }, r.id),
-                el('span', {}, MODES.find((m) => m.id === r.mode)?.label ?? r.mode),
+                el('span', {}, modeLabel(r.mode)),
                 el('span', { class: 'muted' }, `${r.players}/4 · ${PHASE[r.phase] ?? r.phase}`),
                 el('a', { class: 'button', href: '#' + r.id }, r.phase === 'waiting' ? 'Entrar' : 'Assistir'),
               ),
@@ -71,12 +69,19 @@ export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] |
       'div',
       { class: 'lobby' },
       el('header', {}, el('h1', {}, 'Sinuca'), el('button', { type: 'button', class: 'link', onclick: onRename }, `${name} · trocar`)),
-      el('section', {}, el('h2', {}, 'Criar mesa'), el('div', { class: 'modes' }, ...MODES.map((m) =>
-        el('button', { type: 'button', class: m.ready ? 'primary' : '', disabled: !m.ready, onclick: () => onCreate(m.id) }, m.label, !m.ready && el('small', {}, 'em breve')),
+      el('section', {}, el('h2', {}, 'Criar mesa'), el('div', { class: 'modes' }, ...(Object.keys(MODES) as Mode[]).map((m) =>
+        el('button', { type: 'button', class: 'primary', onclick: () => onCreate(m) }, MODES[m].label, el('small', {}, seatsText(m))),
       ))),
       el('section', {}, el('h2', {}, 'Mesas abertas'), list),
     ),
   );
+}
+
+// "2 ou 4 jogadores", "1 a 4 jogadores", "2 a 4 jogadores"
+function seatsText(mode: Mode): string {
+  const n = MODES[mode].seats;
+  const contiguous = n.every((v, i) => i === 0 || v === n[i - 1] + 1);
+  return `${contiguous ? `${n[0]} a ${n[n.length - 1]}` : n.join(' ou ')} jogadores`;
 }
 
 export function screen(root: HTMLElement, title: string, text: string, button: string, onClick: () => void) {
@@ -94,6 +99,25 @@ export function toast(msg: string) {
 }
 
 const GROUP = { solids: 'lisas', stripes: 'listradas' };
+const COLOR_NAME: Record<number, string> = { 1: 'vermelha', 2: 'amarela', 3: 'verde', 4: 'marrom', 5: 'azul', 6: 'rosa', 7: 'preta' };
+
+// o que o jogador da vez precisa saber da regra, numa linha
+export function targetText(g: GameState): string {
+  if (g.mode === 'sinuca') {
+    const on = ballOn(g.balls);
+    if (on === null) return '';
+    if (g.secondFree) return 'Tacada livre: qualquer bola vale';
+    const base = `Bola da vez: ${COLOR_NAME[on]} (${on})`;
+    return g.mustBallOn ? `${base}. Agora tem que ser nela` : base;
+  }
+  if (g.mode === 'snooker') {
+    const t = target(g);
+    if (t === 'red') return 'Alvo: uma vermelha';
+    if (t === 'color') return 'Alvo: uma cor';
+    return `Alvo: ${COLOR_NAME[valueOf(t)]} (${valueOf(t)})`;
+  }
+  return '';
+}
 
 export function renderHud(
   root: HTMLElement,
@@ -101,28 +125,35 @@ export function renderHud(
   you: { seat: number | null },
   online: boolean,
   status: string,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; copy(): void; lobby(): void },
+  muted: boolean,
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; copy(): void; lobby(): void; mute(): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
+  const teams = room.mode === 'eightball';
   const seatCount = g ? g.seats : 4;
   const seats = room.seats.slice(0, seatCount).map((s, i) => {
-    const team = i % 2;
-    const group = g?.groups[team];
+    const team = teams ? ` team-${i % 2}` : '';
+    const group = g?.mode === 'eightball' ? g.groups[i % 2] : null;
+    const score = g && 'scores' in g ? g.scores[i] : null;
     const turn = g && !room.rolling && room.phase === 'aiming' && g.turn === i;
     if (!s) {
-      return el('li', { class: `seat empty team-${team}` }, waiting && you.seat !== i ? el('button', { type: 'button', onclick: () => act.sit(i) }, 'Sentar aqui') : 'livre');
+      return el('li', { class: `seat empty${team}` }, waiting && you.seat !== i ? el('button', { type: 'button', onclick: () => act.sit(i) }, 'Sentar aqui') : 'livre');
     }
     return el(
       'li',
-      { class: `seat team-${team}${turn ? ' turn' : ''}${i === you.seat ? ' me' : ''}` },
+      { class: `seat${team}${turn ? ' turn' : ''}${i === you.seat ? ' me' : ''}` },
       el('span', { class: `dot ${s.connected ? 'on' : 'off'}`, title: s.connected ? 'conectado' : 'desconectado' }),
       el('b', {}, s.name),
       group && el('small', {}, GROUP[group]),
+      score !== null && el('span', { class: 'score' }, String(score)),
     );
   });
   const seated = room.seats.filter(Boolean).length;
-  const winnerNames = g && g.winner !== null ? room.seats.filter((s, i) => s && i % 2 === g.winner).map((s) => s!.name).join(' e ') : '';
+  const canStart = MODES[room.mode].seats.includes(seated);
+  const winners = g ? winnersOf(g) : null;
+  const winnerNames = (winners ?? []).map((i) => room.seats[i]?.name).filter(Boolean).join(' e ');
+  const rule = g && room.phase === 'aiming' ? targetText(g) : '';
 
   root.replaceChildren(...[
     el(
@@ -131,20 +162,24 @@ export function renderHud(
       el('button', { type: 'button', class: 'link', onclick: act.lobby, 'aria-label': 'Voltar ao lobby' }, '‹ Lobby'),
       el('button', { type: 'button', class: 'code', onclick: act.copy, title: 'Copiar link da mesa' }, `${room.id} · copiar link`),
       el('span', { class: `dot ${online ? 'on' : 'off'}`, title: online ? 'conectado' : 'reconectando…' }),
+      el('button', { type: 'button', class: 'link', onclick: act.mute, 'aria-pressed': String(!muted) }, muted ? 'Som: desligado' : 'Som: ligado'),
     ),
+    el('div', { class: 'mode-name' }, MODES[room.mode].label),
     el('ul', { class: 'seats' }, ...seats),
     el('div', { class: 'status' }, status),
+    rule && el('div', { class: 'status rule' }, rule),
+    room.mode === 'free' && room.phase === 'aiming' && you.seat !== null && el('button', { type: 'button', class: 'rerack', onclick: act.rerack }, 'Arrumar mesa'),
     waiting &&
       el(
         'div',
         { class: 'center-actions' },
-        el('p', {}, seated === 2 || seated === 4 ? 'Todos prontos?' : 'A partida começa com 2 ou 4 jogadores sentados.'),
-        you.seat !== null && el('button', { type: 'button', class: 'primary', disabled: !(seated === 2 || seated === 4), onclick: act.start }, 'Começar'),
+        el('p', {}, canStart ? 'Todos prontos?' : `${MODES[room.mode].label}: começa com ${seatsText(room.mode)} sentados.`),
+        you.seat !== null && el('button', { type: 'button', class: 'primary', disabled: !canStart, onclick: act.start }, 'Começar'),
         you.seat !== null && el('button', { type: 'button', onclick: () => act.sit(null) }, 'Assistir'),
         you.seat === null && el('p', { class: 'muted' }, 'Você está assistindo. Toque em "Sentar aqui" num lugar livre.'),
       ),
     room.phase === 'over' &&
-      el('div', { class: 'center-actions' }, el('h2', {}, `${winnerNames} ${g?.seats === 4 ? 'venceram' : 'venceu'}!`), you.seat !== null && el('button', { type: 'button', class: 'primary', onclick: act.rematch }, 'Revanche')),
+      el('div', { class: 'center-actions' }, el('h2', {}, `${winnerNames} ${(winners?.length ?? 0) > 1 ? 'venceram' : 'venceu'}!`), you.seat !== null && el('button', { type: 'button', class: 'primary', onclick: act.rematch }, 'Revanche')),
     you.seat === null && !waiting && el('div', { class: 'badge' }, 'assistindo'),
   ].filter((c): c is HTMLElement => !!c));
 }
