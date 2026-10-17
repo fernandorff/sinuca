@@ -6,7 +6,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/worker",
     "build": "vite build",
     "dev:worker": "wrangler dev",
     "dev:client": "vite"
