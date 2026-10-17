@@ -107,23 +107,45 @@ function collideBalls(bodies: Body[], step: number, events: SimEvent[], R: numbe
     for (let j = i + 1; j < bodies.length; j++) {
       const b = bodies[j];
       if (b.pocketed) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
       const d = len(dx, dy);
       if (d >= 2 * R || d === 0) continue;
-      const nx = dx / d;
-      const ny = dy / d;
-      const approach = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
-      if (approach < 0) {
+      const rvx = b.vx - a.vx;
+      const rvy = b.vy - a.vy;
+      if (rvx * dx + rvy * dy < 0) {
+        // numa tacada forte a bola anda quase um raio por passo: o choque é achado já com as bolas sobrepostas.
+        // Volta as duas ao instante em que se tocaram (|d − v·t| = 2R), senão a bola acertada sai torta
+        const A = rvx * rvx + rvy * rvy;
+        const Bh = dx * rvx + dy * rvy;
+        const t = (Bh + Math.sqrt(Bh * Bh - A * (dx * dx + dy * dy - 4 * R * R))) / A;
+        a.x -= a.vx * t;
+        a.y -= a.vy * t;
+        b.x -= b.vx * t;
+        b.y -= b.vy * t;
+        dx = b.x - a.x;
+        dy = b.y - a.y;
+        const dc = len(dx, dy);
+        const nx = dx / dc;
+        const ny = dy / dc;
+        const approach = rvx * nx + rvy * ny;
         // massas iguais: troca a componente normal; o giro (w) não muda, por isso existe puxada e seguida
-        const k = ((1 + E_BALL) / 2) * approach;
+        const k = ((1 + E_BALL) / 2) * Math.min(0, approach);
         a.vx += k * nx;
         a.vy += k * ny;
         b.vx -= k * nx;
         b.vy -= k * ny;
+        // o resto do passo já com as velocidades novas
+        a.x += a.vx * t;
+        a.y += a.vy * t;
+        b.x += b.vx * t;
+        b.y += b.vy * t;
         // v = velocidade do impacto (para o volume do som); arredondada, não entra nas regras
         events.push({ step, kind: 'hit', a: a.id, b: b.id, v: round2(-approach) });
+        continue;
       }
+      const nx = dx / d;
+      const ny = dy / d;
       const push = (2 * R - d) / 2;
       a.x -= nx * push;
       a.y -= ny * push;

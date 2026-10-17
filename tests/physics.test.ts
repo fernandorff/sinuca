@@ -127,3 +127,23 @@ test('side pocket: a ball through the mouth drops, one hitting the jaw bounces b
   expect(jaw.events.some((e) => e.kind === 'pocket')).toBe(false);
   expect(jaw.events).toContainEqual(expect.objectContaining({ kind: 'cushion', ball: 0 }));
 });
+
+test('cut shot: the object ball leaves along the line of centres, soft or hard', () => {
+  // bola alvo 0,8R acima da linha da tacada: no contato, a linha dos centros sobe 0,4 (seno do corte)
+  const ny = 0.4;
+  const nx = Math.sqrt(1 - ny * ny);
+  for (const power of [0.2, 0.6, 1]) {
+    const balls: BallPos[] = [
+      { id: 0, x: 0.5, y: W / 2, pocketed: false },
+      { id: 3, x: 1.2, y: W / 2 + R * 0.8, pocketed: false },
+    ];
+    let dir: { x: number; y: number } | null = null;
+    simulate(balls, { dx: 1, dy: 0, power, spinX: 0, spinY: 0 }, (bodies) => {
+      const b = bodies[1];
+      const v = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+      if (!dir && v > 0) dir = { x: b.vx / v, y: b.vy / v };
+    });
+    // menos de 0,5° de erro
+    expect(dir!.x * nx + dir!.y * ny).toBeGreaterThan(Math.cos((0.5 * Math.PI) / 180));
+  }
+});
