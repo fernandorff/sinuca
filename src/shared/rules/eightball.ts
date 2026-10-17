@@ -1,9 +1,10 @@
 // Bola 8 (WPA simplificada): sem push-out, sem regra de 3 faltas, a 8 vale em qualquer caçapa.
 import type { SimEvent } from '../physics.ts';
-import { FOOT, HEAD_X, L, R, W, rack, type BallPos } from '../table.ts';
+import { FOOT, HEAD_X, POOL, W, rack, respot, type BallPos } from '../table.ts';
 
 export type Group = 'solids' | 'stripes';
 export type EightState = {
+  mode: 'eightball';
   balls: BallPos[];
   seats: number;
   turn: number; // índice do assento; time = turn % 2
@@ -19,6 +20,7 @@ const other = (g: Group): Group => (g === 'solids' ? 'stripes' : 'solids');
 
 export function newGame(seats: 2 | 4, breakingSeat: number): EightState {
   return {
+    mode: 'eightball',
     balls: rack(),
     seats,
     turn: breakingSeat,
@@ -55,10 +57,10 @@ export function applyShot(s: EightState, final: BallPos[], events: SimEvent[]): 
   let balls = final.map((b) => ({ ...b }));
   let winner: 0 | 1 | null = null;
   if (potted.includes(8)) {
-    if (s.isBreak) balls = respot(balls, 8, FOOT.x, FOOT.y, 1);
+    if (s.isBreak) balls = respot(balls, 8, FOOT.x, FOOT.y, 1, POOL);
     else winner = clearedBefore && !foul ? team : ((1 - team) as 0 | 1);
   }
-  if (potted.includes(0)) balls = respot(balls, 0, HEAD_X, W / 2, -1);
+  if (potted.includes(0)) balls = respot(balls, 0, HEAD_X, W / 2, -1, POOL);
 
   // mesa aberta (nunca na saída): a primeira bola de grupo encaçapada sem falta define os grupos
   let groups = s.groups;
@@ -80,12 +82,4 @@ export function applyShot(s: EightState, final: BallPos[], events: SimEvent[]): 
     winner,
     lastFoul: foul,
   };
-}
-
-// recoloca a bola no ponto (x, y) ou, se ocupado, no primeiro lugar livre andando em x na direção dir
-function respot(balls: BallPos[], id: number, x: number, y: number, dir: 1 | -1): BallPos[] {
-  const free = (px: number) => balls.every((b) => b.id === id || b.pocketed || (b.x - px) ** 2 + (b.y - y) ** 2 >= 4 * R * R);
-  let px = x;
-  while (!free(px) && px > R && px < L - R) px += dir * (2 * R + 0.001);
-  return balls.map((b) => (b.id === id ? { ...b, x: px, y, pocketed: false } : b));
 }
