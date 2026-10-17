@@ -155,8 +155,12 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     const depth = (v: number) => Math.abs(v - v0); // quanto entra na tabela, a partir da ponta (linha de jogo)
     const side = (v: number) => sideMouth + depth(v) * JAW;
     const corner = (v: number) => half - cornerA + depth(v) * CORNER_JAW;
-    const left = (v: number) => (u0 === 0 ? side(v) : -corner(v));
-    const right = (v: number) => (u1 === 0 ? -side(v) : corner(v));
+    // além do corte reto, a tabela nunca entra no buraco (senão ficam pontinhas verdes lá dentro)
+    const cs = asUV(axis).filter((c) => Math.abs(c.v - v0) < c.r + Math.abs(v1 - v0) && Math.sign(c.v) === Math.sign(v0));
+    const clipL = (v: number) => cs.filter((c) => c.u < (u0 + u1) / 2 && Math.abs(v - c.v) < c.r).map((c) => c.u + near(v, c.v, c.r));
+    const clipR = (v: number) => cs.filter((c) => c.u > (u0 + u1) / 2 && Math.abs(v - c.v) < c.r).map((c) => c.u - near(v, c.v, c.r));
+    const left = (v: number) => Math.max(u0 === 0 ? side(v) : -corner(v), ...clipL(v));
+    const right = (v: number) => Math.min(u1 === 0 ? -side(v) : corner(v), ...clipR(v));
     const N = 14;
     const vs = Array.from({ length: N + 1 }, (_, i) => v0 + ((v1 - v0) * i) / N);
     const pts = [...vs.map((v) => toXZ(axis, right(v), v)), ...vs.reverse().map((v) => toXZ(axis, left(v), v))];
@@ -185,17 +189,48 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   felt.rotation.x = -Math.PI / 2;
   felt.receiveShadow = true;
   scene.add(felt);
-  // forro sem luz nem reflexo: o buraco fica escuro de verdade
-  const cupMat = new THREE.MeshBasicMaterial({ color: '#060504', side: THREE.DoubleSide });
+  // dentro da caçapa: aro escuro de couro na boca (do topo da madeira até o pano) e uma redinha embaixo
+  const rimMat = new THREE.MeshStandardMaterial({ color: '#1a120c', roughness: 0.8, side: THREE.DoubleSide });
+  const netTexture = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#100c09';
+    g.fillRect(0, 0, 64, 64);
+    // malha em losango: cordas nas duas diagonais
+    g.strokeStyle = '#8a6f50';
+    g.lineWidth = 3;
+    for (let k = -64; k <= 128; k += 16) {
+      g.beginPath();
+      g.moveTo(k, 0);
+      g.lineTo(k + 64, 64);
+      g.moveTo(k, 64);
+      g.lineTo(k + 64, 0);
+      g.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
   for (const h of holes) {
-    // forro escuro do topo da madeira até o fundo: o corte na moldura não mostra a madeira por dentro
     const top = RAIL_H + 0.006;
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.998, h.r * 0.92, top + POCKET_DEPTH, 40, 1, true), cupMat);
-    cup.position.set(h.x, (top - POCKET_DEPTH) / 2, h.z);
-    const bottom = new THREE.Mesh(new THREE.CircleGeometry(h.r * 0.92, 32), cupMat);
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.998, h.r * 0.998, top, 40, 1, true), rimMat);
+    rim.position.set(h.x, top / 2, h.z);
+    // a rede afunila e tem a malha repetida em volta; o fundo é a mesma rede
+    const wallTex = netTexture.clone();
+    wallTex.repeat.set(10, 2);
+    const net = new THREE.Mesh(
+      new THREE.CylinderGeometry(h.r * 0.995, h.r * 0.85, POCKET_DEPTH, 40, 1, true),
+      new THREE.MeshStandardMaterial({ map: wallTex, roughness: 1, side: THREE.DoubleSide }),
+    );
+    net.position.set(h.x, -POCKET_DEPTH / 2, h.z);
+    const floorTex = netTexture.clone();
+    floorTex.repeat.set(3, 3);
+    const bottom = new THREE.Mesh(new THREE.CircleGeometry(h.r * 0.85, 32), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 1 }));
     bottom.rotation.x = -Math.PI / 2;
     bottom.position.set(h.x, -POCKET_DEPTH, h.z);
-    scene.add(cup, bottom);
+    scene.add(rim, net, bottom);
   }
 
   const cushionMat = new THREE.MeshStandardMaterial({ color: CUSHION, roughness: 0.9 });
