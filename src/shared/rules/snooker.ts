@@ -69,7 +69,8 @@ export function applySnooker(s: SnookerState, final: BallPos[], events: SimEvent
     const onValue = typeof t === 'number' ? valueOf(t) : t === 'color' && firstHit !== null && !isRed(firstHit) ? valueOf(firstHit) : 1;
     const involved = [onValue, ...(firstHit !== null ? [valueOf(firstHit)] : []), ...potted.map(valueOf)];
     const points = Math.max(4, ...involved);
-    const scores = s.scores.map((v, i) => (i === next ? v + points : v));
+    // sozinho na mesa, a falta não dá pontos a ninguém
+    const scores = s.scores.map((v, i) => (i === next && s.seats > 1 ? v + points : v));
     let balls = respotColors(final, pottedColors);
     if (scratch) balls = respot(balls, 0, BAULK_X - 0.12, SNOOKER.W / 2, -1, SNOOKER);
     const reason = scratch ? 'Branca encaçapada' : firstHit === null ? 'Não acertou nenhuma bola' : !legalFirst ? 'Bateu primeiro na bola errada' : 'Encaçapou a bola errada';

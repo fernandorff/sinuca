@@ -81,7 +81,7 @@ export function renderLobby(root: HTMLElement, name: string, rooms: RoomInfo[] |
 function seatsText(mode: Mode): string {
   const n = MODES[mode].seats;
   const contiguous = n.every((v, i) => i === 0 || v === n[i - 1] + 1);
-  return `${contiguous ? `${n[0]} a ${n[n.length - 1]}` : n.join(' ou ')} jogadores`;
+  return `${contiguous ? `${n[0]} a ${n[n.length - 1]}` : `${n.slice(0, -1).join(', ')} ou ${n[n.length - 1]}`} jogadores`;
 }
 
 export function screen(root: HTMLElement, title: string, text: string, button: string, onClick: () => void) {
@@ -179,7 +179,7 @@ export function renderHud(
         you.seat === null && el('p', { class: 'muted' }, 'Você está assistindo. Toque em "Sentar aqui" num lugar livre.'),
       ),
     room.phase === 'over' &&
-      el('div', { class: 'center-actions' }, el('h2', {}, `${winnerNames} ${(winners?.length ?? 0) > 1 ? 'venceram' : 'venceu'}!`), you.seat !== null && el('button', { type: 'button', class: 'primary', onclick: act.rematch }, 'Revanche')),
+      el('div', { class: 'center-actions' }, el('h2', {}, winnerNames ? `${winnerNames} ${(winners?.length ?? 0) > 1 ? 'venceram' : 'venceu'}!` : 'Fim de jogo'), you.seat !== null && el('button', { type: 'button', class: 'primary', onclick: act.rematch }, 'Revanche')),
     you.seat === null && !waiting && el('div', { class: 'badge' }, 'assistindo'),
   ].filter((c): c is HTMLElement => !!c));
 }

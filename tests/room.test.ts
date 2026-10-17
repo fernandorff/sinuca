@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import type { ClientMsg, ServerMsg } from '../src/shared/protocol.ts';
 import { EMPTY_MS, FALLBACK_MS, SWEEP_MS, createRoom, nextAlarm, reduce, type Out, type RoomState } from '../src/shared/room.ts';
+import { winnersOf } from '../src/shared/rules/index.ts';
 import { simulate, type Shot } from '../src/shared/physics.ts';
 import { R } from '../src/shared/table.ts';
 
@@ -201,7 +202,6 @@ function roomOf(mode: RoomState['mode'], ...names: string[]): RoomState {
 test('start respects the seat counts of each mode', () => {
   expect(run(roomOf('free', 'a'), 'a', { t: 'start' }).state!.phase).toBe('aiming');
   expect(run(roomOf('sinuca', 'a', 'b', 'c'), 'a', { t: 'start' }).state!.game!.mode).toBe('sinuca');
-  expect(errorsTo(run(roomOf('sinuca', 'a'), 'a', { t: 'start' }).out, 'a')).toEqual(['bad_start']);
   expect(errorsTo(run(roomOf('eightball', 'a', 'b', 'c'), 'a', { t: 'start' }).out, 'a')).toEqual(['bad_start']);
 });
 
@@ -236,4 +236,19 @@ test('snooker game ends → over with rematch', () => {
   s = run(s, 'a', { t: 'rematch' }).state!;
   expect(s.phase).toBe('aiming');
   expect(s.game!.mode).toBe('snooker');
+});
+
+test('every mode can start with a single player', () => {
+  for (const mode of ['eightball', 'free', 'sinuca', 'snooker'] as const) {
+    expect(run(roomOf(mode, 'a'), 'a', { t: 'start' }).state!.phase).toBe('aiming');
+  }
+});
+
+test('solo eight-ball: losing ends the game with no winner names', () => {
+  let s = run(roomOf('eightball', 'a'), 'a', { t: 'start' }).state!;
+  s = { ...s, game: { ...s.game!, isBreak: false, ballInHand: null, groups: ['solids', 'stripes'] } as RoomState['game'] };
+  const { state } = breakShot(s, 'a');
+  const r = run(state, 'a', { t: 'result', shotNo: 0, final: state.game!.balls.map((b) => (b.id === 8 ? { ...b, pocketed: true } : b)), events: [{ step: 1, kind: 'hit', a: 0, b: 8 }, { step: 3, kind: 'pocket', ball: 8, pocket: 0 }] });
+  expect(r.state!.phase).toBe('over');
+  expect(winnersOf(r.state!.game!)).toEqual([]);
 });

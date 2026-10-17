@@ -61,7 +61,8 @@ export function applySinuca(s: SinucaState, final: BallPos[], events: SimEvent[]
   const { firstHit, potted, scratch } = readShot(events);
 
   const foul = (reason: string): SinucaState => {
-    const scores = s.scores.map((v, i) => (i === next ? v + PENALTY : v));
+    // sozinho na mesa, a falta não dá pontos a ninguém
+    const scores = s.scores.map((v, i) => (i === next && s.seats > 1 ? v + PENALTY : v));
     let balls = respotAll(final, potted);
     if (scratch) balls = respot(balls, 0, BAULK_X - 0.12, SNOOKER.W / 2, -1, SNOOKER);
     return { ...s, balls, scores, turn: next, secondFree: false, mustBallOn: false, ballInHand: scratch ? 'd' : null, isBreak: false, lastFoul: reason };

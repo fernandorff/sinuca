@@ -118,6 +118,16 @@ export function createControls(
   powerEl.addEventListener('pointermove', (e) => {
     if (powerEl.hasPointerCapture(e.pointerId)) powerAt(e);
   });
+  // rodinha do mouse: para baixo aumenta a força, como na barra (pedido do Fernando, 17/10/2026)
+  window.addEventListener(
+    'wheel',
+    (e) => {
+      if (!opts || e.deltaY === 0) return;
+      e.preventDefault();
+      setPower(power + (e.deltaY > 0 ? 0.03 : -0.03));
+    },
+    { passive: false },
+  );
   powerEl.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') setPower(power + 0.05);
     if (e.key === 'ArrowUp') setPower(power - 0.05);

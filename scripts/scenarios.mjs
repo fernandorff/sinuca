@@ -59,23 +59,27 @@ const { id } = await res.json();
 const [a, b, c, d, e] = ['Ana', 'Bia', 'Caio', 'Duda', 'Edu'].map((n) => client(id, n));
 globalThis.players = [a, b, c, d, e];
 for (const p of [a, b, c, d, e]) await p.hello();
-await e.waitFor((m) => m.t === 'state' && m.you.seat === null, 'Edu becomes spectator');
+// os hello chegam por conexões diferentes e podem chegar fora de ordem: quem senta e quem assiste vem do servidor
+const full = (p) => p.waitFor((m) => m.t === 'state' && m.room.seats.filter(Boolean).length === 4 && m.room.spectators.length === 1, 'full table');
+const seatsNow = (await Promise.all([a, b, c, d, e].map(full))).map((m) => m.you.seat);
+const watcher = [a, b, c, d, e][seatsNow.indexOf(null)];
+const seated = [a, b, c, d, e].filter((p) => p !== watcher);
+const first = seated[0];
 console.log('ok  4 seated + 1 spectator');
 
-a.send({ t: 'start' });
-let room = (await a.waitFor((m) => m.t === 'state' && m.room.phase === 'aiming', 'aiming')).room;
+first.send({ t: 'start' });
+let room = (await first.waitFor((m) => m.t === 'state' && m.room.phase === 'aiming', 'aiming')).room;
 if (room.game.seats !== 4) fail('expected doubles');
 
 // rodízio de duplas: A1, B1, A2, B2
 const order = [];
-// os hello chegam por conexões diferentes e podem chegar fora de ordem: o lugar vem do servidor
 const bySeat = [];
-for (const p of [a, b, c, d]) bySeat[(await p.waitFor((m) => m.t === 'state' && m.room.phase === 'aiming', 'seat')).you.seat] = p;
+for (const p of seated) bySeat[(await p.waitFor((m) => m.t === 'state' && m.room.phase === 'aiming', 'seat')).you.seat] = p;
 for (let i = 0; i < 4; i++) {
   const shooter = bySeat[room.game.turn];
   const prevShot = room.shotNo;
   await shootAndResolve(shooter, room, 1);
-  room = (await a.waitFor((m) => m.t === 'state' && m.room.shotNo === prevShot + 1, 'state after shot')).room;
+  room = (await first.waitFor((m) => m.t === 'state' && m.room.shotNo === prevShot + 1, 'state after shot')).room;
   order.push(room.game.turn);
 }
 if (order.join() !== '1,2,3,0') fail('rotation was ' + order.join());
@@ -84,7 +88,7 @@ console.log('ok  doubles rotation 1,2,3,0');
 // espectador vê a mira de quem está na vez
 const [s0, s1, s2, s3] = bySeat;
 s0.send({ t: 'aim', angle: 0.5 });
-await e.waitFor((m) => m.t === 'aim' && m.angle === 0.5, 'spectator sees aim');
+await watcher.waitFor((m) => m.t === 'aim' && m.angle === 0.5, 'spectator sees aim');
 console.log('ok  spectator sees aim');
 
 // o assento 0 cai na vez dele: o parceiro (assento 2) joga
@@ -92,7 +96,7 @@ s0.ws.close();
 await s1.waitFor((m) => m.t === 'state' && m.room.seats[0] && !m.room.seats[0].connected, 'seat 0 shown disconnected');
 const before = room.shotNo;
 s2.send({ t: 'shot', shotNo: before, shot: SHOT });
-const cShot = await e.waitFor((m) => m.t === 'shot' && m.shotNo === before, 'spectator sees teammate shot');
+const cShot = await watcher.waitFor((m) => m.t === 'shot' && m.shotNo === before, 'spectator sees teammate shot');
 console.log('ok  teammate shoots for disconnected partner; spectator sees shot');
 
 // quem tacou (assento 2) não manda resultado; o assento 1 manda: vale depois de 10 s
@@ -110,7 +114,7 @@ const st = await back.waitFor((m) => m.t === 'state' && m.you.seat === 0, 'seat 
 if (!st.room.seats[0].connected) fail('seat 0 not connected after reconnect');
 console.log('ok  reconnect regains seat');
 
-for (const p of [back, s1, s2, s3, e]) p.ws.close();
+for (const p of [back, s1, s2, s3, watcher]) p.ws.close();
 
 // ninguém recebeu a tacada: quem tacou some sem mandar resultado e o outro estava fora do ar
 const res2 = await fetch(base + '/api/rooms', { method: 'POST', body: JSON.stringify({ mode: 'eightball' }) });

@@ -167,3 +167,14 @@ test('snooker: potting the black last ends the game', () => {
   expect(s.scores).toEqual([37, 20]);
   expect(s.winners).toEqual([0]);
 });
+
+test('solo sinuca: a foul does not give points to yourself', () => {
+  const s = sin({ ...newSinuca(1, 0), isBreak: false, ballInHand: null }, [hit(1, 0, 6), rail(4, 6)]);
+  expect(s.scores).toEqual([0]);
+  expect(s.turn).toBe(0);
+});
+
+test('solo snooker: a foul does not give points to yourself', () => {
+  const s = snk({ ...newSnooker(1, 0), isBreak: false, ballInHand: null }, [hit(1, 0, 16), rail(4, 16)]);
+  expect(s.scores).toEqual([0]);
+});

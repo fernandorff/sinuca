@@ -10,16 +10,16 @@ export type Mode = 'eightball' | 'free' | 'sinuca' | 'snooker';
 export type GameState = EightState | FreeState | SinucaState | SnookerState;
 
 export const MODES: Record<Mode, { label: string; table: Table; seats: number[] }> = {
-  eightball: { label: 'Bola 8', table: POOL, seats: [2, 4] },
+  eightball: { label: 'Bola 8', table: POOL, seats: [1, 2, 4] },
   free: { label: 'Mesa livre', table: POOL, seats: [1, 2, 3, 4] },
-  sinuca: { label: 'Sinuca brasileira', table: SNOOKER, seats: [2, 3, 4] },
-  snooker: { label: 'Snooker', table: SNOOKER, seats: [2, 3, 4] },
+  sinuca: { label: 'Sinuca brasileira', table: SNOOKER, seats: [1, 2, 3, 4] },
+  snooker: { label: 'Snooker', table: SNOOKER, seats: [1, 2, 3, 4] },
 };
 
 export const isMode = (m: unknown): m is Mode => typeof m === 'string' && m in MODES;
 
 export function newGameFor(mode: Mode, seats: number, breakingSeat: number): GameState {
-  if (mode === 'eightball') return newEight(seats as 2 | 4, breakingSeat);
+  if (mode === 'eightball') return newEight(seats as 1 | 2 | 4, breakingSeat);
   if (mode === 'free') return newFree(seats, breakingSeat);
   if (mode === 'sinuca') return newSinuca(seats, breakingSeat);
   return newSnooker(seats, breakingSeat);
