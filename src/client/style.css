@@ -78,3 +78,6 @@ h2 { font-size: 1.05rem; margin: 0 0 10px; color: var(--muted); font-weight: 600
 .tray { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 3px; width: fit-content; max-width: min(360px, calc(100% - 110px)); background: rgba(20, 17, 13, .78); border-radius: 8px; padding: 4px 6px; }
 .mini { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; font-weight: 800; color: #151515; box-shadow: inset -2px -3px 4px rgba(0, 0, 0, .3); }
 .skip { position: absolute; left: 50%; bottom: calc(24px + var(--safe-b)); transform: translateX(-50%); background: var(--panel); }
+/* vinheta: escurece as bordas, como luz de bar concentrada na mesa */
+body.in-room::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 55%, transparent 55%, rgba(0, 0, 0, .55) 100%); z-index: 1; }
+.hud, .controls { z-index: 2; }

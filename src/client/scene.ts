@@ -1,5 +1,6 @@
 // Cena 3D: a física vive no plano (x, y); aqui (x, y) vira (x − L/2, R, y − W/2) no plano XZ.
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { MODES, type Mode } from '../shared/rules/index.ts';
 import { predictAim } from '../shared/aim.ts';
 import { BAULK_X, D_R, type BallPos } from '../shared/table.ts';
@@ -55,11 +56,38 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#14110d');
+  scene.background = new THREE.Color('#0d0a07');
+  scene.fog = new THREE.Fog('#0d0a07', 4.5, 11);
   const camera = new THREE.PerspectiveCamera(48, 1, 0.05, 20);
+  // reflexos: um "quarto" de luz gerado na hora vira o mapa de ambiente (bolas e madeira brilham)
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.35;
 
-  scene.add(new THREE.HemisphereLight('#fff3e0', '#1a1612', 0.9));
-  const lamp = new THREE.DirectionalLight('#fff6e8', 1.8);
+  // bar: chão, paredes escuras e uma luminária baixa sobre a mesa (aparece na vista de mira)
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), new THREE.MeshStandardMaterial({ color: '#2a1d14', roughness: 0.85 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.78;
+  floor.receiveShadow = true;
+  scene.add(floor);
+  const room = new THREE.Mesh(new THREE.BoxGeometry(14, 4, 14), new THREE.MeshStandardMaterial({ color: '#1b140e', roughness: 1, side: THREE.BackSide }));
+  room.position.y = 1.2;
+  scene.add(room);
+  const shade = new THREE.Group();
+  const shadeBody = new THREE.Mesh(new THREE.BoxGeometry(L * 0.7, 0.12, 0.34), new THREE.MeshStandardMaterial({ color: '#1f4d36', roughness: 0.5, metalness: 0.3 }));
+  const shadeGlow = new THREE.Mesh(new THREE.PlaneGeometry(L * 0.68, 0.3), new THREE.MeshBasicMaterial({ color: '#fff1d6' }));
+  shadeGlow.rotation.x = Math.PI / 2;
+  shadeGlow.position.y = -0.061;
+  shade.add(shadeBody, shadeGlow);
+  shade.position.y = 1.15;
+  scene.add(shade);
+  const pool = new THREE.SpotLight('#ffe9c4', 1.6, 0, Math.PI / 3, 0.7, 0);
+  pool.position.set(0, 1.1, 0);
+  pool.target.position.set(0, 0, 0);
+  scene.add(pool, pool.target);
+
+  scene.add(new THREE.HemisphereLight('#fff3e0', '#1a1612', 0.55));
+  const lamp = new THREE.DirectionalLight('#fff6e8', 1.5);
   lamp.position.set(0.3, 3, 0.4);
   lamp.castShadow = true;
   lamp.shadow.mapSize.set(1024, 1024);
@@ -94,12 +122,35 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   for (const z of [-(outerW / 2 - FRAME_W / 2), outerW / 2 - FRAME_W / 2]) box(outerL, RAIL_H + 0.01, FRAME_W, 0, (RAIL_H + 0.01) / 2, z, woodMat);
   for (const x of [-(outerL / 2 - FRAME_W / 2), outerL / 2 - FRAME_W / 2]) box(FRAME_W, RAIL_H + 0.01, outerW - 2 * FRAME_W, x, (RAIL_H + 0.01) / 2, 0, woodMat);
   box(outerL + 0.04, 0.6, outerW + 0.04, 0, -0.302, 0, woodMat);
-  const pocketMat = new THREE.MeshBasicMaterial({ color: '#050505' });
+  // caçapas: buraco escuro com parede por dentro e um aro de couro por cima
+  const pocketMat = new THREE.MeshBasicMaterial({ color: '#030303', side: THREE.DoubleSide });
+  const leather = new THREE.MeshStandardMaterial({ color: '#24150c', roughness: 0.6 });
   for (const p of pockets) {
-    const hole = new THREE.Mesh(new THREE.CylinderGeometry(p.r, p.r, 0.002, 32), pocketMat);
-    hole.position.copy(toScene(p.x, p.y)).setY(RAIL_H + 0.006);
-    scene.add(hole);
+    const at = toScene(p.x, p.y);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(p.r, 32), pocketMat);
+    hole.rotation.x = -Math.PI / 2;
+    hole.position.copy(at).setY(0.0015);
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(p.r, p.r, RAIL_H + 0.012, 32, 1, true), pocketMat);
+    wall.position.copy(at).setY((RAIL_H + 0.012) / 2);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(p.r + 0.003, 0.0055, 10, 40), leather);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.copy(at).setY(RAIL_H + 0.009);
+    scene.add(hole, wall, rim);
   }
+  // diamantes de madrepérola na moldura: 3 entre cada par de caçapas
+  const pearl = new THREE.MeshStandardMaterial({ color: '#efe7d2', roughness: 0.25, metalness: 0.1 });
+  const diamond = new THREE.CircleGeometry(0.009, 4);
+  const railTop = RAIL_H + 0.0105;
+  const putDiamond = (x: number, z: number) => {
+    const m = new THREE.Mesh(diamond, pearl);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, railTop, z);
+    scene.add(m);
+  };
+  const midLong = W / 2 + CUSHION_W + FRAME_W / 2;
+  const midShort = L / 2 + CUSHION_W + FRAME_W / 2;
+  for (let k = 1; k < 8; k++) if (k !== 4) for (const z of [-midLong, midLong]) putDiamond(-L / 2 + (k * L) / 8, z);
+  for (let k = 1; k < 4; k++) for (const x of [-midShort, midShort]) putDiamond(x, -W / 2 + (k * W) / 4);
   // mesa de sinuca: linha da cabeceira e o "D", onde a branca fica na mão
   if (MODES[mode].table !== MODES.eightball.table) {
     const mark = new THREE.LineBasicMaterial({ color: '#d9e6dc', transparent: true, opacity: 0.55 });
@@ -123,7 +174,8 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   function mesh(id: number) {
     let m = meshes.get(id);
     if (!m) {
-      m = new THREE.Mesh(sphere, new THREE.MeshStandardMaterial({ map: ballTexture(mode, id), roughness: 0.22 }));
+      // verniz: camada brilhante por cima da cor, refletindo o ambiente
+      m = new THREE.Mesh(sphere, new THREE.MeshPhysicalMaterial({ map: ballTexture(mode, id), roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.06 }));
       m.castShadow = true;
       m.rotation.set(0, Math.PI / 2, Math.PI / 2);
       scene.add(m);
@@ -132,13 +184,24 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     return m;
   }
 
-  // taco e linha de mira
+  // taco: a ponta fina encosta na bola (x = 0) e o cabo vai para trás (−x)
   const stick = new THREE.Group();
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0065, 0.014, 1.45, 16), new THREE.MeshStandardMaterial({ color: '#c99a5b', roughness: 0.5 }));
-  shaft.rotation.z = Math.PI / 2;
-  shaft.position.x = -1.45 / 2;
-  shaft.castShadow = true;
-  stick.add(shaft);
+  let along = 0;
+  const seg = (rFront: number, rBack: number, len: number, color: string, rough = 0.45, metal = 0) => {
+    // o cilindro deitado tem o topo (+y) virado para −x: topo = parte de trás
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rBack, rFront, len, 20), new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal }));
+    m.rotation.z = Math.PI / 2;
+    m.position.x = -(along + len / 2);
+    m.castShadow = true;
+    stick.add(m);
+    along += len;
+  };
+  seg(0.0058, 0.006, 0.01, '#3a6fb0', 0.9); // ponteira com giz
+  seg(0.006, 0.0063, 0.022, '#f1ede2', 0.3); // anel branco
+  seg(0.0063, 0.0105, 0.76, '#e2c08d', 0.4); // haste de madeira clara
+  seg(0.0105, 0.011, 0.014, '#c9c9c9', 0.25, 0.8); // junção de metal
+  seg(0.011, 0.0145, 0.6, '#3b1f12', 0.35); // cabo escuro
+  seg(0.0145, 0.0145, 0.03, '#111111', 0.6); // ponta do cabo
   scene.add(stick);
   // mira: linha até o primeiro contato, branca fantasma, e as direções da bola alvo e da branca
   const line = (color: string, opacity: number, dashed: boolean) => {
@@ -221,6 +284,8 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     const aspect = camera.aspect;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    // a luminária fica entre a câmera de cima e a mesa: só aparece na vista de mira
+    shade.visible = camMode === 'aim';
     if (camMode === 'top') {
       const portrait = aspect < 1;
       const long = L + 2 * (CUSHION_W + FRAME_W) + 0.08;
