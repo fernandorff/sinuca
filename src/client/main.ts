@@ -6,6 +6,7 @@ import type { BallPos } from '../shared/table.ts';
 import { createControls } from './controls.ts';
 import { connect } from './net.ts';
 import { createScene } from './scene.ts';
+import { createMusic, TRACKS, type TrackId } from './music.ts';
 import { createSound } from './sound.ts';
 import { askName, banner, el, renderHud, renderLobby, screen, toast, type RoomInfo } from './ui.ts';
 
@@ -92,6 +93,11 @@ function startRoom(id: string, name: string) {
   let status = 'Conectando…';
   let muted = store.get('sinuca:mute') === '1';
   const sound = createSound(() => muted);
+  // música de fundo escolhida (fica salva); o navegador só deixa tocar depois do primeiro toque
+  const music = createMusic();
+  const saved = store.get('sinuca:music');
+  let musicId: TrackId = TRACKS.some((t) => t.id === saved) ? (saved as TrackId) : 'off';
+  window.addEventListener('pointerdown', () => musicId !== 'off' && music.play(musicId), { once: true });
 
   // a cena depende da mesa do modo, que só se sabe quando chega o primeiro estado
   let view: { scene: ReturnType<typeof createScene>; controls: ReturnType<typeof createControls> } | null = null;
@@ -133,6 +139,12 @@ function startRoom(id: string, name: string) {
     rematch: () => net.send({ t: 'rematch' }),
     rerack: () => net.send({ t: 'rerack' }),
     skip: () => (skip = true),
+    music(id: TrackId) {
+      musicId = id;
+      store.set('sinuca:music', id);
+      music.play(id);
+      draw();
+    },
     lobby: () => (location.hash = ''),
     mute() {
       muted = !muted;
@@ -151,7 +163,7 @@ function startRoom(id: string, name: string) {
   };
 
   function draw() {
-    if (room) renderHud(hud, room, you, online, status, muted, animating, act);
+    if (room) renderHud(hud, room, you, online, status, muted, animating, musicId, act);
   }
 
   function show(balls: BallPos[]) {

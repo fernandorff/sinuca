@@ -4,6 +4,7 @@ import { ballOn } from '../shared/rules/sinuca.ts';
 import { target, valueOf } from '../shared/rules/snooker.ts';
 import type { PublicRoom } from '../shared/room.ts';
 import { ballLook } from './look.ts';
+import { TRACKS, type TrackId } from './music.ts';
 import { CONTROLS, RULES } from './rules-text.ts';
 
 type Child = Node | string | null | undefined | false;
@@ -146,7 +147,8 @@ export function renderHud(
   status: string,
   muted: boolean,
   animating: boolean,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; copy(): void; lobby(): void; mute(): void; skip(): void },
+  music: TrackId,
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
@@ -184,6 +186,12 @@ export function renderHud(
       el('span', { class: `dot ${online ? 'on' : 'off'}`, title: online ? 'conectado' : 'reconectando…' }),
       el('button', { type: 'button', class: 'link', onclick: act.mute, 'aria-pressed': String(!muted) }, muted ? 'Som: desligado' : 'Som: ligado'),
       el('button', { type: 'button', class: 'link', onclick: () => showRules(room.mode) }, 'Regras'),
+      el(
+        'label',
+        { class: 'music' },
+        'Música ',
+        el('select', { onchange: (e: Event) => act.music((e.target as HTMLSelectElement).value as TrackId) }, ...TRACKS.map((t) => el('option', { value: t.id, selected: t.id === music }, t.label))),
+      ),
     ),
     el('div', { class: 'mode-name' }, MODES[room.mode].label),
     el('ul', { class: 'seats' }, ...seats),
