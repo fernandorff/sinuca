@@ -9,7 +9,7 @@ export type ClientMsg =
   | { t: 'rematch' }
   | { t: 'rerack' }
   | { t: 'sit'; seat: number | null }
-  | { t: 'aim'; angle: number }
+  | { t: 'aim'; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'shot'; shotNo: number; shot: Shot; cue?: { x: number; y: number } }
   | { t: 'result'; shotNo: number; final: BallPos[]; events: SimEvent[] };
 
@@ -18,7 +18,7 @@ export type ErrorCode = 'not_found' | 'other_tab' | 'not_your_turn' | 'bad_cue' 
 export type ServerMsg =
   | { t: 'state'; room: PublicRoom; you: { playerId: string; seat: number | null } }
   | { t: 'shot'; shotNo: number; by: number; shot: Shot; balls: BallPos[] }
-  | { t: 'aim'; seat: number; angle: number }
+  | { t: 'aim'; seat: number; angle: number; power: number; spinX: number; spinY: number }
   | { t: 'error'; code: ErrorCode; msg: string };
 
 const MAX_RESULT = 64 * 1024;
@@ -86,8 +86,13 @@ export function parseClientMessage(raw: string): ClientMsg | null {
       return { t: m.t };
     case 'sit':
       return m.seat === null || int(m.seat, 0, 3) ? { t: 'sit', seat: m.seat as number | null } : null;
-    case 'aim':
-      return num(m.angle) ? { t: 'aim', angle: m.angle } : null;
+    case 'aim': {
+      // força e efeito vão junto para os outros verem o ajuste ao vivo; cliente antigo sem eles manda zero
+      const { power = 0, spinX = 0, spinY = 0 } = m;
+      if (!num(m.angle) || !num(power) || !num(spinX) || !num(spinY)) return null;
+      if (power < 0 || power > 1 || spinX * spinX + spinY * spinY > 1) return null;
+      return { t: 'aim', angle: m.angle, power, spinX, spinY };
+    }
     case 'shot': {
       const s = shot(m.shot);
       if (!s || !int(m.shotNo, 0, 1e9)) return null;

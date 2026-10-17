@@ -252,3 +252,9 @@ test('solo eight-ball: losing ends the game with no winner names', () => {
   expect(r.state!.phase).toBe('over');
   expect(winnersOf(r.state!.game!)).toEqual([]);
 });
+
+test('aim relays the spin and power to everyone', () => {
+  const s = run(roomOf('free', 'a'), 'a', { t: 'start' }).state!;
+  const r = run(s, 'a', { t: 'aim', angle: 0.5, power: 0.3, spinX: 0.2, spinY: -0.4 });
+  expect(r.out.map((o) => o.msg)).toEqual([{ t: 'aim', seat: 0, angle: 0.5, power: 0.3, spinX: 0.2, spinY: -0.4 }]);
+});

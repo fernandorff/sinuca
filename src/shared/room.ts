@@ -190,7 +190,7 @@ export function reduce(s: RoomState | null, input: Input, now: number): { state:
 
     case 'aim':
       if (!canShoot(s, playerId)) return { state: s, out: [] };
-      return { state: s, out: [{ to: 'all', msg: { t: 'aim', seat: s.game!.turn, angle: msg.angle } }] };
+      return { state: s, out: [{ to: 'all', msg: { t: 'aim', seat: s.game!.turn, angle: msg.angle, power: msg.power, spinX: msg.spinX, spinY: msg.spinY } }] };
 
     case 'shot': {
       if (!canShoot(s, playerId) || msg.shotNo !== s.shotNo) return fail(s, playerId, 'not_your_turn');

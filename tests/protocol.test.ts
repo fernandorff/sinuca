@@ -62,3 +62,11 @@ test('accepts snooker ball ids up to 21 and 22 balls; rejects id 22', () => {
 });
 
 test('accepts rerack', () => expect(parseClientMessage('{"t":"rerack"}')).toEqual({ t: 'rerack' }));
+
+test('aim carries spin and power; old clients without them get zeros', () => {
+  const aim = (o: object) => parseClientMessage(JSON.stringify({ t: 'aim', angle: 1, ...o }));
+  expect(aim({ power: 0.4, spinX: 0.3, spinY: -0.5 })).toEqual({ t: 'aim', angle: 1, power: 0.4, spinX: 0.3, spinY: -0.5 });
+  expect(aim({})).toEqual({ t: 'aim', angle: 1, power: 0, spinX: 0, spinY: 0 });
+  expect(aim({ spinX: 0.8, spinY: 0.8 })).toBeNull();
+  expect(aim({ power: 2 })).toBeNull();
+});

@@ -105,7 +105,7 @@ function startRoom(id: string, name: string) {
     if (view) return view;
     const scene = createScene(canvas, mode);
     const controls = createControls(canvas, ctl, scene, {
-      onAim: (angle) => net.send({ t: 'aim', angle }),
+      onAim: (aim) => net.send({ t: 'aim', ...aim }),
       onShoot(shot, cue) {
         if (!room) return;
         net.send({ t: 'shot', shotNo: room.shotNo, shot, cue });
@@ -292,7 +292,7 @@ function startRoom(id: string, name: string) {
       else applyState(m.room);
     } else if (m.t === 'shot') animate(m);
     else if (m.t === 'aim') {
-      if (m.seat !== you.seat) view?.controls.showAim(m.angle);
+      if (m.seat !== you.seat) view?.controls.showAim(m);
     } else if (m.code === 'not_found') {
       net.stop();
       screen(ui, 'Mesa não encontrada', 'Confira o link ou crie uma mesa nova no lobby.', 'Ir para o lobby', act.lobby);

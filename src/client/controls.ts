@@ -13,7 +13,7 @@ export function createControls(
   root: HTMLElement,
   scene: GameScene,
   cb: {
-    onAim(angle: number): void;
+    onAim(aim: { angle: number; power: number; spinX: number; spinY: number }): void;
     onShoot(shot: Shot, cue?: { x: number; y: number }): void;
     onMoveCue(pos: { x: number; y: number }, valid: boolean): void;
   },
@@ -26,7 +26,7 @@ export function createControls(
   let camMode: 'top' | 'aim' = 'top';
   let placing = false;
   let placed: { x: number; y: number } | null = null;
-  let lastAimSent = 0;
+  let aimTimer = 0;
 
   root.innerHTML = `
     <div class="ctl-shoot">
@@ -54,14 +54,19 @@ export function createControls(
   // o taco recua conforme a força escolhida
   const showCue = () => scene.setCue(!!opts, angle, power * 0.5, { power, spinX, spinY });
 
+  // mira, força e efeito vão para os outros no máximo 20 vezes por segundo, sempre com o último ajuste
   function sendAim() {
     showCue();
-    const now = performance.now();
-    if (now - lastAimSent > 50) {
-      lastAimSent = now;
-      cb.onAim(angle);
-    }
+    if (!opts || aimTimer) return;
+    aimTimer = window.setTimeout(() => {
+      aimTimer = 0;
+      if (opts) cb.onAim({ angle, power, spinX, spinY });
+    }, 50);
   }
+  const placeDot = (x: number, y: number) => {
+    dot.style.left = `${50 + x * 40}%`;
+    dot.style.top = `${50 - y * 40}%`;
+  };
 
   // mira: na vista de cima, aponta para onde o dedo está; na vista de mira, arrastar para os lados gira
   let dragX: number | null = null;
@@ -113,7 +118,7 @@ export function createControls(
     fill.style.height = `${power * 100}%`;
     pct.textContent = `${Math.round(power * 100)}%`;
     powerEl.setAttribute('aria-valuenow', String(Math.round(power * 100)));
-    showCue();
+    sendAim();
   }
   function powerAt(e: PointerEvent) {
     const r = powerEl.getBoundingClientRect();
@@ -184,9 +189,8 @@ export function createControls(
     }
     spinX = Math.abs(x) < 0.08 ? 0 : x;
     spinY = Math.abs(y) < 0.08 ? 0 : y;
-    dot.style.left = `${50 + spinX * 40}%`;
-    dot.style.top = `${50 - spinY * 40}%`;
-    showCue();
+    placeDot(spinX, spinY);
+    sendAim();
   }
   spin.addEventListener('pointerdown', (e) => {
     spin.setPointerCapture(e.pointerId);
@@ -208,6 +212,7 @@ export function createControls(
   });
 
   let remoteTarget = 0;
+  let remote = { power: 0, spinX: 0, spinY: 0 };
   let remoteShown: number | null = null;
   let remoteAnimating = false;
   function stepRemote() {
@@ -218,7 +223,7 @@ export function createControls(
     // menor caminho entre os dois ângulos (passar de 359° para 1° sem dar a volta)
     const diff = Math.atan2(Math.sin(remoteTarget - remoteShown), Math.cos(remoteTarget - remoteShown));
     remoteShown += diff * 0.35;
-    scene.setCue(true, remoteShown, 0);
+    scene.setCue(true, remoteShown, remote.power * 0.5, remote);
     if (camMode === 'aim') scene.setCamera('aim', remoteShown);
     if (Math.abs(diff) > 0.0005) requestAnimationFrame(stepRemote);
     else remoteAnimating = false;
@@ -226,7 +231,10 @@ export function createControls(
 
   return {
     enable(next: ControlOpts | null) {
-      if (next) remoteShown = null;
+      if (next) {
+        remoteShown = null;
+        placeDot(spinX, spinY);
+      }
       opts = next;
       placing = false;
       placed = null;
@@ -239,10 +247,14 @@ export function createControls(
     },
     // espectadores veem a mira de quem está na vez: as posições chegam ~20 por segundo e o taco desliza
     // entre elas a cada quadro, em vez de pular (senão a jogada do outro parece rodar a poucos FPS)
-    showAim(a: number) {
+    // e o ponto de efeito e a força de quem joga aparecem ao vivo (pedido do Fernando, 17/10/2026)
+    showAim(a: { angle: number; power: number; spinX: number; spinY: number }) {
       if (opts) return;
-      remoteTarget = a;
-      if (remoteShown === null) remoteShown = a;
+      remoteTarget = a.angle;
+      remote = { power: a.power, spinX: a.spinX, spinY: a.spinY };
+      placeDot(a.spinX, a.spinY);
+      if (remoteShown === null) remoteShown = a.angle;
+      scene.setCue(true, remoteShown, remote.power * 0.5, remote);
       if (!remoteAnimating) {
         remoteAnimating = true;
         requestAnimationFrame(stepRemote);
