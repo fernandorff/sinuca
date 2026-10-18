@@ -9,6 +9,7 @@ export const COLOR_NAME: Record<number, string> = { 1: 'vermelha', 2: 'amarela',
 
 function ballName(g: GameState, id: number): string {
   if (g.mode === 'sinuca') return COLOR_NAME[id];
+  if (g.mode === 'matamata') return id <= 4 ? 'vermelha' : 'amarela';
   if (g.mode === 'snooker') return isRed(id) ? 'vermelha' : COLOR_NAME[id - SNOOKER_COLOR_BASE];
   return `a ${id}`;
 }

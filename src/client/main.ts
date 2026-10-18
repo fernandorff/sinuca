@@ -1,6 +1,6 @@
 import { ITEM_NAME, simulate, type Item } from '../shared/physics.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
-import { MODES, highlightIds, newGameFor, type Mode } from '../shared/rules/index.ts';
+import { MODES, highlightIds, newGameFor, type Mode, isTeamGame, needsCall } from '../shared/rules/index.ts';
 import { cueOk, type PublicRoom } from '../shared/room.ts';
 import type { BallPos } from '../shared/table.ts';
 import { createControls } from './controls.ts';
@@ -121,8 +121,13 @@ function startRoom(id: string, name: string) {
     const scene = createScene(canvas, mode);
     const controls = createControls(canvas, ctl, scene, {
       onAim: (aim) => net.send({ t: 'aim', ...aim }),
-      onShoot(shot, cue) {
+      onShoot(shot, cue, forced) {
         if (!room) return;
+        // mata-mata: a última bola só vale cantada; sem cantar, só o tempo esgotado taca
+        if (!forced && shot.call === undefined && needsCall(room)) {
+          toast('Última bola: cante a caçapa antes de tacar.');
+          return;
+        }
         net.send({ t: 'shot', shotNo: room.shotNo, shot, cue });
         controls.enable(null);
       },
@@ -226,6 +231,11 @@ function startRoom(id: string, name: string) {
       draw();
     },
     armed: () => view?.controls.item ?? null,
+    call(p: number) {
+      view?.controls.setCall(p);
+      draw();
+    },
+    called: () => view?.controls.call ?? null,
     join: () => net.send({ t: 'join' }),
     admit: (id: number) => net.send({ t: 'admit', id }),
     videoMini: () => videoMini,
@@ -291,7 +301,7 @@ function startRoom(id: string, name: string) {
     if (you.seat === g.turn) return true;
     if (r.seats[g.turn]?.connected) return false;
     // quem está na vez caiu: na bola 8 em dupla joga o parceiro; nos modos individuais, qualquer um sentado
-    return g.mode === 'eightball' ? g.seats === 4 && you.seat % 2 === g.turn % 2 : true;
+    return isTeamGame(g) ? g.seats > 2 && you.seat % 2 === g.turn % 2 : true;
   }
 
   function applyState(r: PublicRoom) {

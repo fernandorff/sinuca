@@ -1,5 +1,5 @@
 // Telas em DOM: apelido, lobby, HUD da mesa e avisos.
-import { MAX_SEATS, MODES, winnersOf, type GameState, type Mode } from '../shared/rules/index.ts';
+import { MAX_SEATS, MODES, winnersOf, type GameState, type Mode, isTeamGame, leftOf, needsCall } from '../shared/rules/index.ts';
 import { ballOn } from '../shared/rules/sinuca.ts';
 import { target, valueOf } from '../shared/rules/snooker.ts';
 import { COLOR_NAME } from '../shared/log.ts';
@@ -122,6 +122,7 @@ export function toast(msg: string) {
 }
 
 const GROUP = { solids: 'lisas', stripes: 'listradas' };
+const MATA_COLOR = { red: 'vermelhas', yellow: 'amarelas' };
 const ITEM_ICON: Record<Item, string> = { giant: '⭕', bomb: '💥', ice: '🧊', double: '✨' };
 const ITEM_HELP: Record<Item, string> = {
   giant: 'Caçapas com o dobro do tamanho nesta tacada',
@@ -142,6 +143,11 @@ let logOpen = (() => {
 
 // o que o jogador da vez precisa saber da regra, numa linha
 export function targetText(g: GameState): string {
+  if (g.mode === 'matamata') {
+    const c = g.groups[g.turn % 2];
+    if (c === null) return 'Mesa aberta: a primeira bola que cair define a cor de cada lado';
+    return leftOf(g.balls, c).length === 1 ? 'Última bola: tem que cantar a caçapa' : `Na vez: ${MATA_COLOR[c]}`;
+  }
   if (g.mode === 'sinuca') {
     const on = ballOn(g.balls);
     if (on === null) return '';
@@ -168,11 +174,11 @@ export function renderHud(
   animating: boolean,
   music: TrackId,
   musicVol: number,
-  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void; timer(seconds: number): void; join(): void; admit(id: number): void; arm(item: Item): void; armed(): Item | null },
+  act: { sit(seat: number | null): void; start(): void; rematch(): void; rerack(): void; reset(): void; kick(seat: number, name: string, decides: boolean): void; copy(): void; lobby(): void; mute(): void; skip(): void; music(id: TrackId): void; musicVolume(v: number): void; video(): void; stopVideo(): void; videoMini(): boolean; toggleVideo(): void; timer(seconds: number): void; join(): void; admit(id: number): void; arm(item: Item): void; armed(): Item | null; call(p: number): void; called(): number | null },
 ) {
   const g = room.game;
   const waiting = room.phase === 'waiting';
-  const teams = room.mode === 'eightball';
+  const teams = room.mode === 'eightball' || room.mode === 'matamata';
   const seatCount = g ? g.seats : MAX_SEATS;
   const again = () => renderHud(root, room, you, online, status, muted, animating, music, musicVol, act);
   // pedido para entrar: precisa de mais da metade dos jogadores sentados e conectados
@@ -206,6 +212,20 @@ export function renderHud(
             ),
           )
         : [el('span', { class: 'muted' }, 'encaçape uma cor para ganhar')]),
+    );
+  };
+  // mata-mata: cantar a caçapa da última bola, com os botões no desenho da mesa (vista de cima, deitada)
+  const callRow = () => {
+    if (!g || you.seat === null || room.rolling || !needsCall(room)) return null;
+    if (!isTeamGame(g) || (g.turn !== you.seat && !(g.seats > 2 && g.turn % 2 === you.seat % 2 && !room.seats[g.turn]?.connected))) return null;
+    const called = act.called();
+    const btn = (p: number, label: string) =>
+      el('button', { type: 'button', class: called === p ? 'on' : '', 'aria-pressed': String(called === p), title: 'Cantar esta caçapa', onclick: () => act.call(p) }, label);
+    return el(
+      'div',
+      { class: 'status call-row' },
+      el('span', {}, 'Última bola: cante a caçapa'),
+      el('div', { class: 'call-grid' }, btn(0, '↖'), btn(4, '↑'), btn(1, '↗'), btn(3, '↙'), btn(5, '↓'), btn(2, '↘')),
     );
   };
   // bloco da barra: título pequeno e os comandos lado a lado
@@ -250,6 +270,7 @@ export function renderHud(
   const seats = room.seats.slice(0, seatCount).map((s, i) => {
     const team = teams ? ` team-${i % 2}` : '';
     const group = g?.mode === 'eightball' ? g.groups[i % 2] : null;
+    const mata = g?.mode === 'matamata' ? g.groups[i % 2] : null;
     const score = g && 'scores' in g ? g.scores[i] : null;
     const turn = g && !room.rolling && room.phase === 'aiming' && g.turn === i;
     if (!s) {
@@ -263,6 +284,7 @@ export function renderHud(
       el('span', { class: `dot ${s.connected ? 'on' : 'off'}`, title: s.connected ? 'conectado' : 'desconectado' }),
       el('b', {}, s.name),
       group && el('small', {}, `${GROUP[group]} · faltam ${left(g!, group)}`),
+      mata && g?.mode === 'matamata' && el('small', {}, `${MATA_COLOR[mata]} · faltam ${leftOf(g.balls, mata).length}`),
       score !== null && el('span', { class: 'score' }, String(score)),
       g?.mode === 'snooker' && g.stock && el('small', { class: 'stock', title: 'Poderes guardados' }, `⚡${g.stock[i]?.length ?? 0}`),
     );
@@ -339,6 +361,7 @@ export function renderHud(
     animating && el('button', { type: 'button', class: 'skip', onclick: act.skip }, 'Pular ⏭'),
     el('div', { class: 'status' }, status),
     powersRow(),
+    callRow(),
     // votação aberta aparece para todos, não só no menu (pedido do Fernando, 17/10/2026)
     ...room.seats.flatMap((x, i) => {
       const votes = room.kickVotes?.[i] ?? 0;

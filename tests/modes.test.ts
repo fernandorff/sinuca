@@ -3,7 +3,8 @@ import type { SimEvent } from '../src/shared/physics.ts';
 import { applyFree, newFree, type FreeState } from '../src/shared/rules/free.ts';
 import { applySinuca, newSinuca, type SinucaState } from '../src/shared/rules/sinuca.ts';
 import { applySnooker, newSnooker, type SnookerState } from '../src/shared/rules/snooker.ts';
-import { HEAD_X, SNOOKER, inD } from '../src/shared/table.ts';
+import { applyMata, type MataState } from '../src/shared/rules/matamata.ts';
+import { FOOT, HEAD_X, POOL, SNOOKER, inD } from '../src/shared/table.ts';
 import { MODES, newGameFor } from '../src/shared/rules/index.ts';
 import type { Item } from '../src/shared/physics.ts';
 
@@ -216,4 +217,56 @@ test('powers: using a power spends it; pontos em dobro doubles what you pot, not
   s = pwShot({ ...s, onColor: false }, [hit(1, 0, 16), rail(4, 16)], 'double');
   expect(s.scores).toEqual([2, 4]);
   expect(s.stock).toEqual([[], []]);
+});
+
+// Mata-mata: 1 a 4 vermelhas, 5 a 8 amarelas
+const potIn = (step: number, ball: number, pocket: number): SimEvent => ({ step, kind: 'pocket', ball, pocket });
+const mm = (groups: MataState['groups'] = [null, null], seats = 2): MataState => ({ ...(newGameFor('matamata', seats, 0) as MataState), groups, isBreak: false, ballInHand: null });
+const mmShot = (s: MataState, ev: SimEvent[], call?: number) => applyMata(s, finalOf(s, ev), ev, call);
+
+test('mata-mata: 4 red, 4 yellow and the cue ball on a pool table, 1x1 or 2x2', () => {
+  const g = newGameFor('matamata', 2, 0) as MataState;
+  expect(g.balls.map((b) => b.id).sort()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  expect(MODES.matamata.table).toBe(POOL);
+  expect(MODES.matamata.seats).toEqual([1, 2, 4]);
+});
+
+test('mata-mata: the first ball potted without a foul gives that colour to that side', () => {
+  const s = mmShot(mm(), [hit(1, 0, 6), pot(5, 6)]);
+  expect(s.groups).toEqual(['yellow', 'red']);
+  expect(s.turn).toBe(0);
+});
+
+test('mata-mata foul: the other side removes one of its balls (the farthest from the pockets); the turn passes', () => {
+  const s = mmShot(mm(['red', 'yellow']), [hit(1, 0, 6), rail(4, 6)]);
+  expect(s.lastFoul).toBe('Bateu primeiro na bola do outro');
+  expect(s.turn).toBe(1);
+  expect(s.balls.filter((b) => b.id >= 5 && b.pocketed)).toHaveLength(1);
+  expect(s.ballInHand).toBeNull();
+  // branca na caçapa: além de tirar uma, o próximo joga com a branca na mão
+  const t = mmShot(mm(['red', 'yellow']), [hit(1, 0, 2), potIn(6, 0, 3)]);
+  expect(t.balls.filter((b) => b.id >= 5 && b.pocketed)).toHaveLength(1);
+  expect(t.ballInHand).toBe('anywhere');
+});
+
+test('mata-mata foul: the last ball is never removed; with only it left the other side gets ball in hand', () => {
+  const s0 = gone(mm(['red', 'yellow']), [5, 6, 7]);
+  const s = mmShot(s0, [hit(1, 0, 8), rail(4, 8)]);
+  expect(ball(s, 8).pocketed).toBe(false);
+  expect(s.ballInHand).toBe('anywhere');
+});
+
+test('mata-mata: the last ball wins only in the called pocket; elsewhere it comes back and the turn passes', () => {
+  const s0 = gone(mm(['red', 'yellow']), [1, 2, 3]);
+  const win = mmShot(s0, [hit(1, 0, 4), potIn(6, 4, 2)], 2);
+  expect(win.winner).toBe(0);
+  const miss = mmShot(s0, [hit(1, 0, 4), potIn(6, 4, 5)], 2);
+  expect(miss.winner).toBeNull();
+  expect(ball(miss, 4).pocketed).toBe(false);
+  expect(ball(miss, 4).x).toBeCloseTo(FOOT.x, 6);
+  expect(miss.turn).toBe(1);
+  // as duas últimas de uma vez: a última volta para a mesa
+  const two = mmShot(gone(mm(['red', 'yellow']), [1, 2]), [hit(1, 0, 3), pot(5, 3), pot(7, 4)]);
+  expect(two.balls.filter((b) => b.id >= 1 && b.id <= 4 && !b.pocketed)).toHaveLength(1);
+  expect(two.winner).toBeNull();
 });

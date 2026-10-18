@@ -6,7 +6,8 @@ import { POOL, type BallPos, type Table } from './table.ts';
 export type Item = 'giant' | 'bomb' | 'ice' | 'double';
 export const ITEMS: Item[] = ['giant', 'bomb', 'ice', 'double'];
 export const ITEM_NAME: Record<Item, string> = { giant: 'Caçapa gigante', bomb: 'Bola explosiva', ice: 'Mesa de gelo', double: 'Pontos em dobro' };
-export type Shot = { dx: number; dy: number; power: number; spinX: number; spinY: number; item?: Item };
+// call: caçapa cantada (0 a 5) para a última bola do mata-mata; não muda a física
+export type Shot = { dx: number; dy: number; power: number; spinX: number; spinY: number; item?: Item; call?: number };
 export type SimEvent =
   | { step: number; kind: 'hit'; a: number; b: number; v?: number }
   | { step: number; kind: 'cushion'; ball: number; v?: number }

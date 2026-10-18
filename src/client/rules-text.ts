@@ -48,6 +48,17 @@ export const RULES: Record<Mode, { tagline: string; items: string[] }> = {
       'Acaba quando a mesa fica limpa; vence quem tiver mais pontos. Versão simplificada: sem "miss" e sem "free ball".',
     ],
   },
+  matamata: {
+    tagline: 'A sinuca de bar: 4 vermelhas, 4 amarelas e a branca. Mata as suas 4 primeiro.',
+    items: [
+      'Sozinho para treinar, 1x1 ou 2x2 (a dupla alterna as tacadas).',
+      'A mesa começa aberta: a primeira bola encaçapada sem falta define a cor de cada lado.',
+      'Encaçapou uma sua, joga de novo; errou, passa a vez.',
+      'Falta: branca na caçapa, bater primeiro na bola do outro ou não acertar nada. O adversário tira uma bola dele da mesa (sai a mais longe das caçapas). A última bola nunca sai por falta: se ele só tem ela, ou a mesa ainda está aberta, ele joga com a branca na mão. Branca na caçapa também dá a branca na mão.',
+      'A última bola tem que ser cantada: escolha a caçapa antes de tacar. Se cair em outra caçapa, junto com outra sua, ou com falta, ela volta para a mesa e passa a vez.',
+      'Vence quem encaçapar a sua última bola na caçapa cantada.',
+    ],
+  },
   powers: {
     tagline: 'O snooker de sempre, com poderes para guardar e usar na hora certa.',
     items: [

@@ -50,12 +50,13 @@ export function cleanName(raw: unknown): string {
 
 function shot(v: unknown): Shot | null {
   if (!isObj(v)) return null;
-  const { dx, dy, power, spinX, spinY, item } = v;
+  const { dx, dy, power, spinX, spinY, item, call } = v;
   if (!num(dx) || !num(dy) || !num(power) || !num(spinX) || !num(spinY)) return null;
   const dir = Math.sqrt(dx * dx + dy * dy);
   if (dir < 0.999 || dir > 1.001 || power < 0 || power > 1 || spinX * spinX + spinY * spinY > 1) return null;
-  if (item === undefined || item === null) return { dx, dy, power, spinX, spinY };
-  return isItem(item) ? { dx, dy, power, spinX, spinY, item } : null;
+  if (call !== undefined && !int(call, 0, 5)) return null;
+  if (item !== undefined && item !== null && !isItem(item)) return null;
+  return { dx, dy, power, spinX, spinY, ...(isItem(item) ? { item } : {}), ...(call !== undefined ? { call: call as number } : {}) };
 }
 
 function ball(v: unknown): BallPos | null {

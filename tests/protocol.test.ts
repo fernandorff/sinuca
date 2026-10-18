@@ -88,3 +88,8 @@ test('shot and aim carry an optional power from the list', () => {
   expect(parseClientMessage(shot({ item: 'laser' }))).toBeNull();
   expect(parseClientMessage(JSON.stringify({ t: 'aim', angle: 1, item: 'ice' }))).toMatchObject({ t: 'aim', item: 'ice' });
 });
+
+test('shot carries the called pocket (0 to 5) for the mata-mata', () => {
+  expect(parseClientMessage(shot({ call: 2 }))).toMatchObject({ shot: { call: 2 } });
+  expect(parseClientMessage(shot({ call: 9 }))).toBeNull();
+});

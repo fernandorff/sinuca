@@ -391,6 +391,11 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
   giantRings.visible = false;
   scene.add(giantRings);
   let shotGiant = false;
+  // mata-mata: anel na caçapa cantada para a última bola
+  const calledRing = new THREE.Mesh(new THREE.RingGeometry(pockets[0].r * 0.95, pockets[0].r * 1.25, 40), ringMat);
+  calledRing.rotation.x = -Math.PI / 2;
+  calledRing.visible = false;
+  scene.add(calledRing);
   // o caminho da branca sai de uma simulação: só refaz quando a mira, a força, o efeito ou as bolas mudam
   let pathKey = '';
   let preview: ReturnType<typeof shotPreview> = null;
@@ -688,6 +693,11 @@ export function createScene(canvas: HTMLCanvasElement, mode: Mode) {
     // power e efeito só servem para desenhar o caminho da branca depois do choque
     setCue(visible: boolean, angle: number, pull: number, shot: { power: number; spinX: number; spinY: number; item?: Item | null } = { power: 0, spinX: 0, spinY: 0 }) {
       cueState = { visible, angle, pull, power: shot.power, spinX: shot.spinX, spinY: shot.spinY, item: shot.item ?? null };
+      invalidate();
+    },
+    setCalledPocket(p: number | null) {
+      calledRing.visible = p !== null;
+      if (p !== null) calledRing.position.copy(toScene(pockets[p].x, pockets[p].y)).setY(0.005);
       invalidate();
     },
     // anel da Caçapa gigante durante a tacada de quem usou

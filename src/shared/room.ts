@@ -1,7 +1,7 @@
 // Máquina de estados de uma mesa: pura, sem Cloudflare. O Durable Object só entrega mensagens e grava o estado.
 import type { Shot, SimEvent } from './physics.ts';
 import type { ClientMsg, ErrorCode, ServerMsg } from './protocol.ts';
-import { MAX_SEATS, MODES, applyFor, newGameFor, nextBreaker, winnersOf, type GameState, type Mode } from './rules/index.ts';
+import { MAX_SEATS, MODES, applyFor, isTeamGame, newGameFor, nextBreaker, winnersOf, type GameState, type Mode } from './rules/index.ts';
 import { describeShot } from './log.ts';
 import { HEAD_X, inD, type BallPos } from './table.ts';
 
@@ -121,7 +121,7 @@ function canShoot(s: RoomState, playerId: string): boolean {
   const mine = seatOf(s, playerId);
   if (turnSeat?.connected || mine < 0) return false;
   // quem caiu: na bola 8 em time um parceiro joga a vez; nos modos individuais, qualquer um sentado joga por ele
-  if (s.game.mode === 'eightball') return s.game.seats > 2 && mine % 2 === s.game.turn % 2;
+  if (isTeamGame(s.game)) return s.game.seats > 2 && mine % 2 === s.game.turn % 2;
   return true;
 }
 
@@ -140,7 +140,7 @@ const withLog = (s: RoomState, line: string): RoomState => ({ ...s, log: [...(s.
 
 function finish(s: RoomState, final: BallPos[], events: SimEvent[], now: number): RoomState {
   const item = s.pending?.shot.item;
-  const game = applyFor(s.game!, final, events, item);
+  const game = applyFor(s.game!, final, events, item, s.pending?.shot.call);
   const line = describeShot(s.game!, game, events, s.seats.map((x) => x?.name ?? null), item);
   return skipEmpty(withLog({ ...s, game, shotNo: s.shotNo + 1, phase: winnersOf(game) !== null ? 'over' : 'aiming', pending: null, turnStartedAt: now }, line));
 }
@@ -151,7 +151,7 @@ function freeSeat(s: RoomState): number | null {
   const g = s.game;
   const limit = s.phase === 'waiting' || !g ? s.seats.length : g.seats;
   for (let j = 0; j < limit; j++) if (!s.seats[j]) return j;
-  if (g && s.phase !== 'waiting' && g.mode !== 'eightball' && g.seats < s.seats.length) return g.seats;
+  if (g && s.phase !== 'waiting' && !isTeamGame(g) && g.seats < s.seats.length) return g.seats;
   return null;
 }
 
@@ -160,7 +160,7 @@ function freeSeat(s: RoomState): number | null {
 function skipEmpty(s: RoomState): RoomState {
   const g = s.game;
   if (!g || s.phase !== 'aiming' || s.seats[g.turn]) return s;
-  const step = g.mode === 'eightball' && g.seats > 2 ? 2 : 1;
+  const step = isTeamGame(g) && g.seats > 2 ? 2 : 1;
   let turn = g.turn;
   for (let k = 0; k < g.seats && !s.seats[turn]; k++) turn = (turn + step) % g.seats;
   return s.seats[turn] ? { ...s, game: { ...g, turn } } : s;

@@ -156,3 +156,8 @@ body.in-room::after { content: ''; position: fixed; inset: 0; pointer-events: no
 .status.powers button { min-height: 32px; padding: 4px 10px; font-size: .85rem; }
 .status.powers button.on { background: var(--wood); border-color: var(--chalk); color: #fff; }
 .seat .stock { font-size: .75rem; color: var(--muted); }
+/* mata-mata: botões para cantar a caçapa, no desenho da mesa */
+.status.call-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.call-grid { display: grid; grid-template-columns: repeat(3, 40px); gap: 4px; }
+.call-grid button { min-height: 32px; padding: 0; justify-content: center; font-size: 1.05rem; }
+.call-grid button.on { background: var(--wood); border-color: var(--chalk); color: #fff; }

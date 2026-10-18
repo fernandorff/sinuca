@@ -106,3 +106,12 @@ export function respot(balls: BallPos[], id: number, x: number, y: number, dir: 
   while (!free(px) && px > r && px < table.L - r) px += dir * (2 * r + 0.001);
   return balls.map((b) => (b.id === id ? { ...b, x: px, y, pocketed: false } : b));
 }
+
+// Mata-mata: 4 vermelhas (1 a 4) e 4 amarelas (5 a 8) em triângulo de 1, 2, 3 e 2 bolas, cores alternadas
+export function matamataRack(): BallPos[] {
+  const rows = [[1], [5, 2], [6, 3, 7], [4, 8]];
+  const gap = 2 * R + 0.0002;
+  const dx = (gap * Math.sqrt(3)) / 2;
+  const balls = rows.flatMap((row, k) => row.map((id, j) => ({ id, x: FOOT.x + k * dx, y: FOOT.y + (j - (row.length - 1) / 2) * gap, pocketed: false })));
+  return [{ id: 0, x: HEAD_X, y: W / 2, pocketed: false }, ...balls];
+}

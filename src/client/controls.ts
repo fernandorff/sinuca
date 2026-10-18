@@ -14,7 +14,7 @@ export function createControls(
   scene: GameScene,
   cb: {
     onAim(aim: { angle: number; power: number; spinX: number; spinY: number; item: Item | null }): void;
-    onShoot(shot: Shot, cue?: { x: number; y: number }): void;
+    onShoot(shot: Shot, cue: { x: number; y: number } | undefined, forced: boolean): void;
     onMoveCue(pos: { x: number; y: number }, valid: boolean): void;
   },
 ) {
@@ -54,6 +54,8 @@ export function createControls(
   // o taco recua conforme a força escolhida
   // poder escolhido para esta tacada (Snooker com poderes)
   let item: Item | null = null;
+  // caçapa cantada para a última bola do mata-mata
+  let call: number | null = null;
   const showCue = () => scene.setCue(!!opts, angle, power * 0.5, { power, spinX, spinY, item });
 
   // mira, força e efeito vão para os outros no máximo 20 vezes por segundo, sempre com o último ajuste
@@ -168,7 +170,7 @@ export function createControls(
     const n = Math.sqrt(dx * dx + dy * dy);
     dx /= n;
     dy /= n;
-    cb.onShoot({ dx, dy, power, spinX, spinY, ...(item ? { item } : {}) }, cue);
+    cb.onShoot({ dx, dy, power, spinX, spinY, ...(item ? { item } : {}), ...(call !== null ? { call } : {}) }, cue, forced);
   }
 
   // setas giram a mira de pouquinho (Shift: mais rápido) — mira fina no desktop
@@ -258,6 +260,8 @@ export function createControls(
       }
       opts = next;
       item = null;
+      call = null;
+      scene.setCalledPocket(null);
       placing = false;
       placed = null;
       root.classList.toggle('off', !next);
@@ -295,6 +299,14 @@ export function createControls(
     },
     get item() {
       return item;
+    },
+    setCall(p: number) {
+      if (!opts) return;
+      call = call === p ? null : p;
+      scene.setCalledPocket(call);
+    },
+    get call() {
+      return call;
     },
     hideRemote() {
       remoteShown = null;
