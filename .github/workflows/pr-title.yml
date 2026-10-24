@@ -1,0 +1,21 @@
+# O título do PR vira o commit no main: tem que começar pelo tipo (feat, fix, style, refactor, docs, ci, test)
+name: Título do PR
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+jobs:
+  titulo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conferir o formato
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if printf '%s' "$TITLE" | grep -Eq '^(feat|fix|style|refactor|docs|ci|test)(\([a-z0-9-]+\))?: .{3,}'; then
+            echo "Título ok: $TITLE"
+          else
+            echo "::error::Título fora do padrão: \"$TITLE\". Use \"tipo: o que muda\" (tipos: feat, fix, style, refactor, docs, ci, test). Ex.: \"feat: modo bola 9\"."
+            exit 1
+          fi

@@ -1,0 +1,22 @@
+# Checagens de todo pull request e de todo envio para o main: tipos, testes e build
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npx tsc --noEmit -p src/worker
+      - run: npx vitest run
+      - run: npx vite build

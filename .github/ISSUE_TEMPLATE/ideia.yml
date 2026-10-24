@@ -1,0 +1,29 @@
+name: Ideia
+description: Modo, regra, poder ou mudança de interface
+labels: [ideia, precisa de decisão]
+body:
+  - type: textarea
+    id: oque
+    attributes:
+      label: O que
+      description: A ideia em poucas frases.
+    validations:
+      required: true
+  - type: textarea
+    id: porque
+    attributes:
+      label: Por quê
+      description: Que problema resolve ou o que deixa mais divertido.
+    validations:
+      required: true
+  - type: textarea
+    id: como
+    attributes:
+      label: Como imagino
+      description: Regra da mesa de bar, desenho, referência de outro jogo. Opcional.
+  - type: checkboxes
+    id: fazer
+    attributes:
+      label: Quem faz
+      options:
+        - label: Quero fazer o pull request desta ideia

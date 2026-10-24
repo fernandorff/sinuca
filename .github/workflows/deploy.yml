@@ -1,0 +1,41 @@
+# Jogo no ar: todo envio para o main publica em https://sinuca.fernandorffdev.com
+name: Produção
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# um deploy por vez, sem cancelar o que já começou
+concurrency:
+  group: producao
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npx tsc --noEmit -p src/worker
+      - run: npx vitest run
+      - run: npx vite build
+      - run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # o index-*.js servido tem que ser o deste build (cache ou deploy pela metade aparecem aqui)
+      - name: Conferir a versão servida
+        run: |
+          esperado=$(ls dist/assets | grep -E '^index-.*\.js$')
+          for i in $(seq 1 30); do curl -s https://sinuca.fernandorffdev.com/ | grep -q "$esperado" && exit 0; sleep 5; done
+          echo "o site não serve $esperado"; exit 1
+      - run: node scripts/smoke.mjs https://sinuca.fernandorffdev.com
